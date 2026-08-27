@@ -1,4 +1,4 @@
-/* dosfetch - a neofetch clone for DOS
+/* dinspect - a neofetch clone for DOS
  *
  * Originally written by Leah Neukirchen <leah@vuxu.org> in Turbo Pascal 7.
  * This C port (Open Watcom, 16-bit real-mode DOS target) reimplements the
@@ -33,8 +33,8 @@
 
 static void print_usage(void)
 {
-    printf("dosfetch - a neofetch clone for DOS\n\n");
-    printf("Usage: dosfetch [options]\n\n");
+    printf("dinspect - a neofetch clone for DOS\n\n");
+    printf("Usage: dinspect [options]\n\n");
     printf("  --no-logo          Do not draw the ASCII logo\n");
     printf("  --plain            Monochrome screen output, no logo (for OCR capture)\n");
     printf("  -o, --out FILE     Also write a plain-text report to FILE\n");
@@ -118,7 +118,7 @@ int main(int argc, char *argv[])
             show_undetected = 1;
         } else if (stricmp(argv[i], "-o") == 0 || stricmp(argv[i], "--out") == 0) {
             if (i + 1 >= argc) {
-                fprintf(stderr, "dosfetch: %s requires a filename\n", argv[i]);
+                fprintf(stderr, "dinspect: %s requires a filename\n", argv[i]);
                 return 1;
             }
             out_path = argv[++i];
@@ -126,7 +126,7 @@ int main(int argc, char *argv[])
             print_usage();
             return 0;
         } else {
-            fprintf(stderr, "dosfetch: unknown option '%s'\n", argv[i]);
+            fprintf(stderr, "dinspect: unknown option '%s'\n", argv[i]);
             print_usage();
             return 1;
         }
@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
 
     if (out_path != NULL) {
         if (write_fields_file(fields, count, out_path) != 0) {
-            fprintf(stderr, "dosfetch: could not write '%s'\n", out_path);
+            fprintf(stderr, "dinspect: could not write '%s'\n", out_path);
             return 1;
         }
     }

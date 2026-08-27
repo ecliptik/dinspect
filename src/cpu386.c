@@ -1,6 +1,6 @@
 /* cpu386.c - 386+/CPUID/RDTSC-dependent helpers.
  *
- * Compiled at a higher CPU target than the rest of dosfetch -- see
+ * Compiled at a higher CPU target than the rest of dinspect -- see
  * cpu386.h for why that's safe despite the rest of the project
  * deliberately targeting 8086 baseline.
  */

@@ -1,7 +1,7 @@
 /* critical_error.h - install a silent DOS critical-error (INT 24h)
  * handler for the lifetime of the program.
  *
- * Without this, a "device not ready" style error anywhere in dosfetch
+ * Without this, a "device not ready" style error anywhere in dinspect
  * (an empty floppy, an empty CD-ROM drive, etc.) shows DOS's
  * interactive "Abort, Retry, Fail?" prompt and waits forever for a
  * keypress that will never come on an unattended run -- exactly the

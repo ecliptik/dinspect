@@ -4,7 +4,7 @@
  * Protocol facts used here (port addresses, magic bytes, command/mode
  * numbers) come from PicoGUS's own public protocol definitions
  * (https://github.com/polpo/picogus, GPLv2). Reimplemented from those
- * documented values -- not copied code -- to keep dosfetch CC0, same
+ * documented values -- not copied code -- to keep dinspect CC0, same
  * policy as every other detector in this project.
  *
  * Port 0x1D0 is PicoGUS's own deliberate choice, picked specifically

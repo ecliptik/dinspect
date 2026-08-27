@@ -1,18 +1,21 @@
-# dosfetch, a neofetch clone for DOS
+# dinspect, a neofetch clone for DOS
 
 A small DOS program that prints a system inventory — OS, CPU, memory,
 disks, video, sound, network, and more — either to the screen (with a
 neofetch-style ASCII logo) or as a plain-text report to a file, for
 scripted/unattended collection.
 
-Ported from the original Turbo Pascal 7 implementation (`dosfetch.pas`,
-kept in this repo as a historical reference) to C, built with Open
-Watcom for 16-bit real-mode DOS (`src/`). Real-mode with no DPMI
-dependency, so it runs on the widest range of DOS-capable hardware and
-boot configurations — from an original 8086 up through Pentium-class
+This project was 100% built agentically using [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
+
+Ported from [leahneukirchen/dosfetch](https://github.com/leahneukirchen/dosfetch),
+the original Turbo Pascal 7 implementation (`dosfetch.pas`, kept in
+this repo as a historical reference), to C, built with Open Watcom for
+16-bit real-mode DOS (`src/`). Real-mode with no DPMI dependency, so it
+runs on the widest range of DOS-capable hardware and boot
+configurations — from an original 8086 up through Pentium-class
 machines.
 
-![Screenshot of dosfetch](screenshot-c.png)
+![Screenshot of dinspect](screenshot-c.png)
 
 ## Features
 
@@ -41,7 +44,7 @@ Every hardware probe that could plausibly hang on absent/misbehaving
 hardware (an empty floppy or CD-ROM drive, a Sound Blaster or MPU-401
 that never answers) is either a pure memory/register read with no
 "wait for a device" loop, or bounded with a hard iteration cap that
-reports a clean failure instead of blocking forever — dosfetch is
+reports a clean failure instead of blocking forever — dinspect is
 meant to run unattended at boot, where an interactive prompt is
 effectively a hang. A silent DOS critical-error handler is installed
 before any disk code runs, so even an unexpected "not ready" condition
@@ -57,7 +60,7 @@ detection are never confused with each other.
 ## Usage
 
 ```
-dosfetch [options]
+dinspect [options]
 
   --no-logo          Do not draw the ASCII logo
   --plain            Monochrome screen output, no logo (for OCR capture)
@@ -72,7 +75,7 @@ detected`, `not configured`, etc.) is left out of the output entirely
 rather than shown with a placeholder value; pass `--show-undetected` to
 include those fields anyway.
 
-With no options, dosfetch draws the logo and fields to the screen, as
+With no options, dinspect draws the logo and fields to the screen, as
 in the screenshot above. `-o FILE` additionally (or, combined with
 `--plain`, instead) writes every field as one `Label: Value` line per
 field to a plain text file — the format scripted/automated tooling
@@ -90,7 +93,7 @@ does), or a copy of it available under `tools/watcom` in this repo:
 make
 ```
 
-This produces `dosfetch.exe`. Object files land in `build/`; `make
+This produces `dinspect.exe`. Object files land in `build/`; `make
 clean` removes both.
 
 The original Pascal version (`dosfetch.pas`) still builds with Turbo

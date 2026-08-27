@@ -1,4 +1,4 @@
-# Makefile -- build dosfetch.exe with Open Watcom (16-bit real-mode DOS).
+# Makefile -- build dinspect.exe with Open Watcom (16-bit real-mode DOS).
 #
 # Toolchain resolution: uses $(WATCOM) if already set in the environment
 # (a normal Open Watcom install exports this), otherwise falls back to a
@@ -7,7 +7,7 @@
 #   make WATCOM_PREFIX=/path/to/open-watcom
 #
 # Usage:
-#   make            # build dosfetch.exe
+#   make            # build dinspect.exe
 #   make clean
 
 REPO_ROOT    := $(abspath .)
@@ -46,7 +46,7 @@ SRC_BASE := $(filter-out $(SRC_ADV),$(wildcard src/*.c))
 OBJS := $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(SRC_BASE)) \
         $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(SRC_ADV))
 
-EXE := dosfetch.exe
+EXE := dinspect.exe
 
 .PHONY: all clean
 

@@ -1,7 +1,7 @@
 /* cpu386.h - internal: 386+/CPUID/RDTSC-dependent helpers.
  *
  * Everything in cpu386.c is compiled at a higher CPU target than the
- * rest of dosfetch (see the Makefile) because Watcom's inline assembler
+ * rest of dinspect (see the Makefile) because Watcom's inline assembler
  * refuses 386+/Pentium mnemonics (PUSHFD, EAX, CPUID, RDTSC) at the
  * project's default 8086-baseline target -- it's not just a codegen
  * hint, it gates what the assembler will accept at all.
