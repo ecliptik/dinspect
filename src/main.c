@@ -1,0 +1,118 @@
+/* dosfetch - a neofetch clone for DOS
+ *
+ * Originally written by Leah Neukirchen <leah@vuxu.org> in Turbo Pascal 7.
+ * This C port (Open Watcom, 16-bit real-mode DOS target) reimplements the
+ * same fields using the same BIOS/DOS interrupts.
+ *
+ * To the extent possible under law, the creator(s) of this work have
+ * waived all copyright and related or neighboring rights to this work.
+ * See LICENSE (CC0 1.0 Universal).
+ */
+
+#include <stdio.h>
+#include <string.h>
+#include "critical_error.h"
+#include "cpu.h"
+#include "disk.h"
+#include "fields.h"
+#include "fileout.h"
+#include "memory.h"
+#include "network.h"
+#include "output.h"
+#include "picogus.h"
+#include "sound.h"
+#include "sysinfo.h"
+#include "video.h"
+
+#define ADD_FIELD(label_str, getter_call) \
+    do { \
+        fields[count].label = (label_str); \
+        getter_call; \
+        count++; \
+    } while (0)
+
+static void print_usage(void)
+{
+    printf("dosfetch - a neofetch clone for DOS\n\n");
+    printf("Usage: dosfetch [options]\n\n");
+    printf("  --no-logo        Do not draw the ASCII logo\n");
+    printf("  --plain          Monochrome screen output, no logo (for OCR capture)\n");
+    printf("  -o, --out FILE   Also write a plain-text report to FILE\n");
+    printf("  -h, --help       Show this help\n");
+}
+
+/* static, not stack-resident: a 16-bit DOS program's default stack is a
+ * few KB, and this array alone is ~2KB -- combined with the rest of the
+ * call chain that was enough to trip Watcom's stack-overflow check.
+ */
+static field_t fields[MAX_FIELDS];
+
+int main(int argc, char *argv[])
+{
+    unsigned long start_ticks = get_tick_count();
+    int count = 0;
+    int show_logo = 1;
+    int plain = 0;
+    const char *out_path = NULL;
+    int i;
+
+    /* Before anything else touches a disk: silently Fail any critical
+     * error (empty floppy, empty CD-ROM, etc.) instead of blocking on
+     * DOS's "Abort, Retry, Fail?" prompt. See critical_error.h.
+     */
+    install_silent_critical_handler();
+
+    for (i = 1; i < argc; i++) {
+        if (stricmp(argv[i], "--no-logo") == 0) {
+            show_logo = 0;
+        } else if (stricmp(argv[i], "--plain") == 0) {
+            plain = 1;
+            show_logo = 0;
+        } else if (stricmp(argv[i], "-o") == 0 || stricmp(argv[i], "--out") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "dosfetch: %s requires a filename\n", argv[i]);
+                return 1;
+            }
+            out_path = argv[++i];
+        } else if (stricmp(argv[i], "-h") == 0 || stricmp(argv[i], "--help") == 0) {
+            print_usage();
+            return 0;
+        } else {
+            fprintf(stderr, "dosfetch: unknown option '%s'\n", argv[i]);
+            print_usage();
+            return 1;
+        }
+    }
+
+    ADD_FIELD("OS", get_dos_version(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Shell", get_shell(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("CPU", get_cpu_info(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("CPU Speed", get_cpu_speed(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("CPU Features", get_cpu_features(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Video", get_video_info(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Video Memory", get_video_memory(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Sound BLASTER", get_blaster_env(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Sound OPL", get_opl_status(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Sound SB DSP", get_sb_dsp_version(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Sound MPU-401", get_mpu401_status(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("PicoGUS", get_picogus_info(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Network Packet Driver", get_packet_driver_info(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Network IP Config", get_network_ip_info(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Floppy drives", get_floppy_count(fields[count].value, sizeof(fields[count].value)));
+    add_disk_fields(fields, &count, MAX_FIELDS);
+    ADD_FIELD("Base Memory", get_base_memory(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Ext. Memory", get_extended_memory(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Floating Point Unit", get_fpu_status(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Runtime", format_runtime(fields[count].value, sizeof(fields[count].value), start_ticks));
+
+    render_screen(fields, count, show_logo, plain);
+
+    if (out_path != NULL) {
+        if (write_fields_file(fields, count, out_path) != 0) {
+            fprintf(stderr, "dosfetch: could not write '%s'\n", out_path);
+            return 1;
+        }
+    }
+
+    return 0;
+}
