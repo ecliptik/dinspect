@@ -17,7 +17,6 @@
 #define LOGO_COL  1
 #define INFO_COL 44
 #define ROW_START 1
-#define LOGO_ROWS 8
 
 /* Standard DOS text-mode attribute values (background black throughout). */
 #define ATTR_YELLOW       14
@@ -94,6 +93,9 @@ typedef struct {
 typedef struct {
     const logo_run_t *runs;
     int run_count;
+    int height; /* rows this logo occupies, so the field column starts
+                  * below it even when a given logo is taller/shorter
+                  * than the others */
 } logo_t;
 
 /* Generated (not hand-transcribed) from the 8 original wordmark lines,
@@ -126,40 +128,46 @@ static const logo_run_t default_runs[] = {
     { 14, 7, "  `\"Y8888Y\"'  ", ATTR_LIGHTBLUE },
     { 28, 7, "  \"Y88888P\"   ", ATTR_LIGHTRED },
 };
-static const logo_t logo_default = { default_runs, sizeof(default_runs) / sizeof(default_runs[0]) };
+static const logo_t logo_default = { default_runs, sizeof(default_runs) / sizeof(default_runs[0]), 8 };
 
 /* Stacked "MS" (small, top, gray) over "DOS" (bigger, bottom, D=red
  * O=magenta S=yellow) -- matching the classic MS-DOS badge's two-line
  * layout and color story, rather than a single left-to-right wordmark.
- * Per-letter block-character bitmaps generated from a small 5-wide
- * font (3 rows tall for MS, 5 rows tall for DOS) rather than
- * hand-transcribed, to avoid transcription errors -- see the project's
- * dev notes for the generator.
+ * Both words use the same 5-row-tall letterform so "MS" stays legible
+ * (an earlier 3-row version was too cramped to read), with a blank row
+ * between them. Per-letter block-character bitmaps generated from a
+ * small 5-wide font rather than hand-transcribed, to avoid
+ * transcription errors -- see the project's dev notes for the
+ * generator.
  */
 static const logo_run_t msdos_runs[] = {
     { 15, 0, "\xDB   \xDB", ATTR_LIGHTGRAY },
     { 15, 1, "\xDB\xDB \xDB\xDB", ATTR_LIGHTGRAY },
-    { 15, 2, "\xDB   \xDB", ATTR_LIGHTGRAY },
+    { 15, 2, "\xDB \xDB \xDB", ATTR_LIGHTGRAY },
+    { 15, 3, "\xDB \xDB \xDB", ATTR_LIGHTGRAY },
+    { 15, 4, "\xDB   \xDB", ATTR_LIGHTGRAY },
     { 21, 0, " \xDB\xDB\xDB\xDB", ATTR_LIGHTGRAY },
-    { 21, 1, "  \xDB\xDB ", ATTR_LIGHTGRAY },
-    { 21, 2, "\xDB\xDB\xDB\xDB ", ATTR_LIGHTGRAY },
-    { 12, 3, "\xDB\xDB\xDB\xDB ", ATTR_LIGHTRED },
-    { 12, 4, "\xDB   \xDB", ATTR_LIGHTRED },
-    { 12, 5, "\xDB   \xDB", ATTR_LIGHTRED },
-    { 12, 6, "\xDB   \xDB", ATTR_LIGHTRED },
-    { 12, 7, "\xDB\xDB\xDB\xDB ", ATTR_LIGHTRED },
-    { 18, 3, " \xDB\xDB\xDB ", ATTR_LIGHTMAGENTA },
-    { 18, 4, "\xDB   \xDB", ATTR_LIGHTMAGENTA },
-    { 18, 5, "\xDB   \xDB", ATTR_LIGHTMAGENTA },
-    { 18, 6, "\xDB   \xDB", ATTR_LIGHTMAGENTA },
-    { 18, 7, " \xDB\xDB\xDB ", ATTR_LIGHTMAGENTA },
-    { 24, 3, " \xDB\xDB\xDB\xDB", ATTR_YELLOW },
-    { 24, 4, "\xDB    ", ATTR_YELLOW },
-    { 24, 5, " \xDB\xDB\xDB ", ATTR_YELLOW },
-    { 24, 6, "    \xDB", ATTR_YELLOW },
-    { 24, 7, "\xDB\xDB\xDB\xDB ", ATTR_YELLOW },
+    { 21, 1, "\xDB    ", ATTR_LIGHTGRAY },
+    { 21, 2, " \xDB\xDB\xDB ", ATTR_LIGHTGRAY },
+    { 21, 3, "    \xDB", ATTR_LIGHTGRAY },
+    { 21, 4, "\xDB\xDB\xDB\xDB ", ATTR_LIGHTGRAY },
+    { 12, 6, "\xDB\xDB\xDB\xDB ", ATTR_LIGHTRED },
+    { 12, 7, "\xDB   \xDB", ATTR_LIGHTRED },
+    { 12, 8, "\xDB   \xDB", ATTR_LIGHTRED },
+    { 12, 9, "\xDB   \xDB", ATTR_LIGHTRED },
+    { 12, 10, "\xDB\xDB\xDB\xDB ", ATTR_LIGHTRED },
+    { 18, 6, " \xDB\xDB\xDB ", ATTR_LIGHTMAGENTA },
+    { 18, 7, "\xDB   \xDB", ATTR_LIGHTMAGENTA },
+    { 18, 8, "\xDB   \xDB", ATTR_LIGHTMAGENTA },
+    { 18, 9, "\xDB   \xDB", ATTR_LIGHTMAGENTA },
+    { 18, 10, " \xDB\xDB\xDB ", ATTR_LIGHTMAGENTA },
+    { 24, 6, " \xDB\xDB\xDB\xDB", ATTR_YELLOW },
+    { 24, 7, "\xDB    ", ATTR_YELLOW },
+    { 24, 8, " \xDB\xDB\xDB ", ATTR_YELLOW },
+    { 24, 9, "    \xDB", ATTR_YELLOW },
+    { 24, 10, "\xDB\xDB\xDB\xDB ", ATTR_YELLOW },
 };
-static const logo_t logo_msdos = { msdos_runs, sizeof(msdos_runs) / sizeof(msdos_runs[0]) };
+static const logo_t logo_msdos = { msdos_runs, sizeof(msdos_runs) / sizeof(msdos_runs[0]), 11 };
 
 /* Generated the same way as the default logo's runs (see above), from
  * the original 8 FreeDOS wordmark lines split into three color bands.
@@ -187,7 +195,7 @@ static const logo_run_t freedos_runs[] = {
     { 14, 7, "\xDB\xDB\xDB\xDB \xDB\xDB\xDB\xDB\xDB \xDB\xDB\xDB", ATTR_LIGHTBLUE },
     { 28, 7, "\xDB   \xDB\xDB\xDB  \xDB\xDB\xDB\xDB ", ATTR_WHITE },
 };
-static const logo_t logo_freedos = { freedos_runs, sizeof(freedos_runs) / sizeof(freedos_runs[0]) };
+static const logo_t logo_freedos = { freedos_runs, sizeof(freedos_runs) / sizeof(freedos_runs[0]), 8 };
 
 static const logo_t *pick_logo(dos_vendor_t vendor)
 {
@@ -225,29 +233,29 @@ void render_screen(const field_t *fields, int count, int show_logo, int plain,
                     dos_vendor_t vendor)
 {
     int i;
+    int field_col = show_logo ? INFO_COL : LOGO_COL;
     unsigned char label_attr = plain ? ATTR_NORMAL : ATTR_WHITE;
     int last_row = count;
 
     term_clear(ATTR_NORMAL);
 
     if (show_logo) {
-        print_logo(LOGO_COL, ROW_START, pick_logo(vendor));
-        if (LOGO_ROWS > last_row)
-            last_row = LOGO_ROWS;
+        const logo_t *logo = pick_logo(vendor);
+
+        print_logo(LOGO_COL, ROW_START, logo);
+        if (logo->height > last_row)
+            last_row = logo->height;
     }
 
-    for (i = 0; i < count; i++) {
-        /* Only rows actually beside the logo need to leave room for it --
-         * once past the logo's own height, use the full screen width.
-         * Without this, every field past the 8th (the vast majority of
-         * them, now that there are ~19 fields) was needlessly squeezed
-         * into the narrow 36-column info strip and got clipped.
-         */
-        int field_col = (show_logo && i < LOGO_ROWS) ? INFO_COL : LOGO_COL;
-
+    /* Every field lines up at the same column, regardless of row --
+     * intentionally not "full width once past the logo": a jagged left
+     * edge (narrow column for the first few fields, full width for the
+     * rest) read worse than a consistently-aligned column that simply
+     * clips a very long value at the screen edge on rare occasions.
+     */
+    for (i = 0; i < count; i++)
         print_field(field_col, ROW_START + i, fields[i].label, fields[i].value,
                     label_attr, ATTR_NORMAL);
-    }
 
     term_set_cursor(0, ROW_START + last_row);
 }

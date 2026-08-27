@@ -35,10 +35,56 @@ static void print_usage(void)
 {
     printf("dosfetch - a neofetch clone for DOS\n\n");
     printf("Usage: dosfetch [options]\n\n");
-    printf("  --no-logo        Do not draw the ASCII logo\n");
-    printf("  --plain          Monochrome screen output, no logo (for OCR capture)\n");
-    printf("  -o, --out FILE   Also write a plain-text report to FILE\n");
-    printf("  -h, --help       Show this help\n");
+    printf("  --no-logo          Do not draw the ASCII logo\n");
+    printf("  --plain            Monochrome screen output, no logo (for OCR capture)\n");
+    printf("  -o, --out FILE     Also write a plain-text report to FILE\n");
+    printf("  --show-undetected  Include fields that couldn't be detected (UNKNOWN,\n");
+    printf("                     not detected, etc.) instead of omitting them\n");
+    printf("  -h, --help         Show this help\n");
+}
+
+/* Whether a field's value marks it as not actually detected -- these
+ * are the exact lead-in strings every detector in this project uses
+ * for "couldn't determine this" (see disk.h/sound.h/etc. for the
+ * per-field UNKNOWN-vs-real-value convention). Matched as a prefix,
+ * not a substring, so a partially-successful value like
+ * "IP UNKNOWN, GW 192.168.1.1" (real gateway, unknown address) is
+ * correctly left in rather than dropped for merely containing the
+ * word UNKNOWN somewhere.
+ */
+static int is_undetected_value(const char *value)
+{
+    static const char *const markers[] = {
+        "UNKNOWN", "not detected", "not configured", "not probed",
+        "no response", "not set"
+    };
+    size_t i;
+
+    for (i = 0; i < sizeof(markers) / sizeof(markers[0]); i++) {
+        size_t len = strlen(markers[i]);
+        if (strncmp(value, markers[i], len) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+/* Compacts fields[] in place, dropping any whose value is an
+ * "undetected" marker (see is_undetected_value()), and returns the new
+ * count.
+ */
+static int filter_undetected(field_t *fields, int count)
+{
+    int kept = 0;
+    int i;
+
+    for (i = 0; i < count; i++) {
+        if (!is_undetected_value(fields[i].value)) {
+            if (kept != i)
+                fields[kept] = fields[i];
+            kept++;
+        }
+    }
+    return kept;
 }
 
 /* static, not stack-resident: a 16-bit DOS program's default stack is a
@@ -52,6 +98,7 @@ int main(int argc, char *argv[])
     int count = 0;
     int show_logo = 1;
     int plain = 0;
+    int show_undetected = 0;
     const char *out_path = NULL;
     int i;
 
@@ -67,6 +114,8 @@ int main(int argc, char *argv[])
         } else if (stricmp(argv[i], "--plain") == 0) {
             plain = 1;
             show_logo = 0;
+        } else if (stricmp(argv[i], "--show-undetected") == 0) {
+            show_undetected = 1;
         } else if (stricmp(argv[i], "-o") == 0 || stricmp(argv[i], "--out") == 0) {
             if (i + 1 >= argc) {
                 fprintf(stderr, "dosfetch: %s requires a filename\n", argv[i]);
@@ -102,6 +151,9 @@ int main(int argc, char *argv[])
     ADD_FIELD("Network IP Config", get_network_ip_info(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Floppy drives", get_floppy_count(fields[count].value, sizeof(fields[count].value)));
     add_disk_fields(fields, &count, MAX_FIELDS);
+
+    if (!show_undetected)
+        count = filter_undetected(fields, count);
 
     render_screen(fields, count, show_logo, plain, get_dos_vendor());
 

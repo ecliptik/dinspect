@@ -59,11 +59,18 @@ detection are never confused with each other.
 ```
 dosfetch [options]
 
-  --no-logo        Do not draw the ASCII logo
-  --plain          Monochrome screen output, no logo (for OCR capture)
-  -o, --out FILE   Also write a plain-text report to FILE
-  -h, --help       Show this help
+  --no-logo          Do not draw the ASCII logo
+  --plain            Monochrome screen output, no logo (for OCR capture)
+  -o, --out FILE     Also write a plain-text report to FILE
+  --show-undetected  Include fields that couldn't be detected (UNKNOWN,
+                     not detected, etc.) instead of omitting them
+  -h, --help         Show this help
 ```
+
+By default, a field that couldn't be detected (reports `UNKNOWN`, `not
+detected`, `not configured`, etc.) is left out of the output entirely
+rather than shown with a placeholder value; pass `--show-undetected` to
+include those fields anyway.
 
 With no options, dosfetch draws the logo and fields to the screen, as
 in the screenshot above. `-o FILE` additionally (or, combined with
