@@ -12,15 +12,22 @@ void get_dos_version(char *buf, size_t buflen);
 void get_shell(char *buf, size_t buflen);
 
 /* Current BIOS clock tick count (INT 1Ah AH=00h), ~18.2 ticks/second
- * since midnight. Call once at startup and pass the result to
- * format_runtime() at the end to report how long detection took.
+ * since midnight. Used by cpu386.c to time the RDTSC measurement
+ * window.
  */
 unsigned long get_tick_count(void);
 
-/* Formats the elapsed time since start_ticks (as returned by
- * get_tick_count()) into buf, in milliseconds. Reports "0 ms" instead of
- * a bogus huge value across the midnight tick-count wraparound.
+typedef enum {
+    DOS_VENDOR_UNKNOWN,
+    DOS_VENDOR_IBM,
+    DOS_VENDOR_MS,
+    DOS_VENDOR_FREEDOS
+} dos_vendor_t;
+
+/* Raw DOS vendor, via the same INT 21h AH=30h call get_dos_version()
+ * formats into a string -- exposed separately so callers (the logo
+ * selector) can branch on it without reparsing the formatted string.
  */
-void format_runtime(char *buf, size_t buflen, unsigned long start_ticks);
+dos_vendor_t get_dos_vendor(void);
 
 #endif

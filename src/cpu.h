@@ -16,9 +16,13 @@
 /* Formats "YES"/"no" into buf depending on math coprocessor presence. */
 void get_fpu_status(char *buf, size_t buflen);
 
-/* Formats "<Vendor> family=N model=N stepping=N" if CPUID is available,
- * else a coarse pre-CPUID class description ("8086/80286-class
- * (pre-386)", "80386", or "80486 (no CPUID)").
+/* Formats "<Vendor> <Model> (f<family>/m<model>/s<stepping>)" if CPUID
+ * is available and the (vendor, family, model) is recognized (e.g.
+ * "Intel 486DX2 (f4/m3/s2)", "Intel Pentium OverDrive (f5/m3/s1)");
+ * falls back to "<Vendor> f<family>/m<model>/s<stepping>" if CPUID
+ * works but the specific model isn't in the table, or a coarse
+ * pre-CPUID class description ("8086/80286-class (pre-386)", "80386",
+ * or "80486 (no CPUID)") if CPUID isn't available at all.
  */
 void get_cpu_info(char *buf, size_t buflen);
 
@@ -28,23 +32,18 @@ void get_cpu_info(char *buf, size_t buflen);
  */
 void get_cpu_features(char *buf, size_t buflen);
 
-/* Formats an estimated clock speed into buf:
- *   "<n> MHz (RDTSC)"          - measured via the time-stamp counter
- *                                (Pentium-class+ with TSC); trustworthy.
- *   "~<n> loop-iter/sec (uncalibrated, no TSC)" - a PIT channel 2 timed
- *                                loop, used when there's no TSC. Not a
- *                                clock speed -- there's no reliable way
- *                                to convert loop throughput to MHz
- *                                without hardware-specific calibration
- *                                this code doesn't have, and earlier
- *                                attempts to force it into a MHz-shaped
- *                                number rounded to 0 (misreported as
- *                                UNKNOWN) on perfectly real hardware.
- *                                Useful only as a relative/comparative
- *                                figure, e.g. across repeated runs on
- *                                the same machine.
- *   "UNKNOWN"                  - neither measurement produced a usable
- *                                result.
+/* Formats a clock speed into buf:
+ *   "<n> MHz (RDTSC)"    - measured via the time-stamp counter
+ *                          (Pentium-class+ with TSC); a real reading.
+ *   "~<n> MHz (estimated)" - derived from a PIT channel 2 timed loop
+ *                          (used when there's no TSC) via a single
+ *                          reasoned cycles-per-iteration constant, not
+ *                          one calibrated against real silicon -- see
+ *                          the EST_CYCLES_PER_ITERATION comment in
+ *                          cpu.c. Treat as an approximate figure, not
+ *                          an exact one.
+ *   "UNKNOWN"            - neither measurement produced a usable
+ *                          result.
  */
 void get_cpu_speed(char *buf, size_t buflen);
 

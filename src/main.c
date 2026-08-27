@@ -49,7 +49,6 @@ static field_t fields[MAX_FIELDS];
 
 int main(int argc, char *argv[])
 {
-    unsigned long start_ticks = get_tick_count();
     int count = 0;
     int show_logo = 1;
     int plain = 0;
@@ -89,6 +88,9 @@ int main(int argc, char *argv[])
     ADD_FIELD("CPU", get_cpu_info(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("CPU Speed", get_cpu_speed(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("CPU Features", get_cpu_features(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Floating Point Unit", get_fpu_status(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Base Memory", get_base_memory(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Ext. Memory", get_extended_memory(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Video", get_video_info(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Video Memory", get_video_memory(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Sound BLASTER", get_blaster_env(fields[count].value, sizeof(fields[count].value)));
@@ -100,12 +102,8 @@ int main(int argc, char *argv[])
     ADD_FIELD("Network IP Config", get_network_ip_info(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Floppy drives", get_floppy_count(fields[count].value, sizeof(fields[count].value)));
     add_disk_fields(fields, &count, MAX_FIELDS);
-    ADD_FIELD("Base Memory", get_base_memory(fields[count].value, sizeof(fields[count].value)));
-    ADD_FIELD("Ext. Memory", get_extended_memory(fields[count].value, sizeof(fields[count].value)));
-    ADD_FIELD("Floating Point Unit", get_fpu_status(fields[count].value, sizeof(fields[count].value)));
-    ADD_FIELD("Runtime", format_runtime(fields[count].value, sizeof(fields[count].value), start_ticks));
 
-    render_screen(fields, count, show_logo, plain);
+    render_screen(fields, count, show_logo, plain, get_dos_vendor());
 
     if (out_path != NULL) {
         if (write_fields_file(fields, count, out_path) != 0) {

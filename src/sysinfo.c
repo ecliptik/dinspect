@@ -5,11 +5,9 @@
 #include <string.h>
 #include "sysinfo.h"
 
-void get_dos_version(char *buf, size_t buflen)
+static unsigned char read_dos_vendor_byte(void)
 {
     unsigned char vendor;
-    unsigned char major, minor;
-    const char *vendor_name;
 
     _asm {
         mov ax, 3000h
@@ -17,18 +15,36 @@ void get_dos_version(char *buf, size_t buflen)
         mov vendor, bh
     }
 
+    return vendor;
+}
+
+dos_vendor_t get_dos_vendor(void)
+{
+    switch (read_dos_vendor_byte()) {
+        case 0x00: return DOS_VENDOR_IBM;
+        case 0xFD: return DOS_VENDOR_FREEDOS;
+        case 0xFF: return DOS_VENDOR_MS;
+        default:   return DOS_VENDOR_UNKNOWN;
+    }
+}
+
+void get_dos_version(char *buf, size_t buflen)
+{
+    unsigned char major, minor;
+    const char *vendor_name;
+
+    switch (get_dos_vendor()) {
+        case DOS_VENDOR_IBM:     vendor_name = "IBM DOS";     break;
+        case DOS_VENDOR_FREEDOS: vendor_name = "FreeDOS";     break;
+        case DOS_VENDOR_MS:      vendor_name = "MS DOS";      break;
+        default:                 vendor_name = "Unknown DOS"; break;
+    }
+
     _asm {
         mov ax, 3306h
         int 21h
         mov major, bl
         mov minor, bh
-    }
-
-    switch (vendor) {
-        case 0x00: vendor_name = "IBM DOS";     break;
-        case 0xFD: vendor_name = "FreeDOS";     break;
-        case 0xFF: vendor_name = "MS DOS";      break;
-        default:   vendor_name = "Unknown DOS"; break;
     }
 
     sprintf(buf, "%s %u.%u", vendor_name, (unsigned)major, (unsigned)minor);
@@ -58,17 +74,4 @@ unsigned long get_tick_count(void)
     }
 
     return ((unsigned long)cx_val << 16) | (unsigned long)dx_val;
-}
-
-void format_runtime(char *buf, size_t buflen, unsigned long start_ticks)
-{
-    unsigned long end_ticks = get_tick_count();
-    unsigned long elapsed_ticks = (end_ticks >= start_ticks) ? (end_ticks - start_ticks) : 0UL;
-    /* 1 BIOS tick = 1000/18.2065 ms; 54925/1000 approximates that ratio
-     * closely enough for a rough timing indicator, without floating point.
-     */
-    unsigned long ms = elapsed_ticks * 54925UL / 1000UL;
-
-    sprintf(buf, "%lu ms", ms);
-    buf[buflen - 1] = '\0';
 }

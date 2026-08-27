@@ -23,6 +23,7 @@
 #define ATTR_YELLOW     14
 #define ATTR_LIGHTBLUE   9
 #define ATTR_LIGHTRED   12
+#define ATTR_LIGHTGRAY   7
 #define ATTR_WHITE      15
 #define ATTR_NORMAL      7
 
@@ -78,8 +79,8 @@ static void term_set_cursor(int col, int row)
 
 /* Copies up to n bytes from src[start..] into dst, space-padding any
  * shortfall if src is shorter than start+n, and NUL-terminating dst.
- * (The logo's bottom line is intentionally shorter than the others, so
- * this avoids reading past the end of that string literal.)
+ * (Several logo lines are intentionally shorter than the full 42-column
+ * width, so this avoids reading past the end of those string literals.)
  */
 static void copy_band(char *dst, const char *src, size_t src_len,
                        size_t start, size_t n)
@@ -93,9 +94,13 @@ static void copy_band(char *dst, const char *src, size_t src_len,
     dst[n] = '\0';
 }
 
-static void print_logo(int col, int row)
-{
-    static const char *const lines[] = {
+typedef struct {
+    const char *lines[LOGO_ROWS];
+    unsigned char band_attr[3]; /* columns 1-14 / 15-28 / 29-42 */
+} logo_t;
+
+static const logo_t logo_default = {
+    {
         "88888888ba,     ,ad8888ba,    ad88888ba  ",
         "88      `\"8b   d8\"'    `\"8b  d8\"     \"8b ",
         "88        `8b d8'        `8b Y8,         ",
@@ -104,21 +109,69 @@ static void print_logo(int col, int row)
         "88         8P Y8,        ,8P         `8b ",
         "88      .a8P   Y8a.    .a8P  Y8a     a8P ",
         "88888888Y\"'     `\"Y8888Y\"'    \"Y88888P\""
-    };
+    },
+    { ATTR_YELLOW, ATTR_LIGHTBLUE, ATTR_LIGHTRED }
+};
+
+/* Blocky 5x7 block-letter banners (CP437 \xDB = full block), generated
+ * from a small bitmap font rather than hand-transcribed, to avoid
+ * transcription errors -- see the project's dev notes. Column bands
+ * roughly land on MS / D / OS and FRE / ED / OS respectively, which is
+ * why the palettes below are chosen per band rather than per letter.
+ */
+static const logo_t logo_msdos = {
+    {
+        "",
+        "  \xDB   \xDB  \xDB\xDB\xDB\xDB       \xDB\xDB\xDB\xDB   \xDB\xDB\xDB   \xDB\xDB\xDB\xDB",
+        "  \xDB\xDB \xDB\xDB \xDB           \xDB   \xDB \xDB   \xDB \xDB    ",
+        "  \xDB \xDB \xDB \xDB           \xDB   \xDB \xDB   \xDB \xDB    ",
+        "  \xDB \xDB \xDB  \xDB\xDB\xDB  \xDB\xDB\xDB\xDB\xDB \xDB   \xDB \xDB   \xDB  \xDB\xDB\xDB ",
+        "  \xDB   \xDB     \xDB       \xDB   \xDB \xDB   \xDB     \xDB",
+        "  \xDB   \xDB     \xDB       \xDB   \xDB \xDB   \xDB     \xDB",
+        "  \xDB   \xDB \xDB\xDB\xDB\xDB        \xDB\xDB\xDB\xDB   \xDB\xDB\xDB  \xDB\xDB\xDB\xDB "
+    },
+    { ATTR_LIGHTGRAY, ATTR_LIGHTRED, ATTR_YELLOW }
+};
+
+static const logo_t logo_freedos = {
+    {
+        "",
+        " \xDB\xDB\xDB\xDB\xDB \xDB\xDB\xDB\xDB  \xDB\xDB\xDB\xDB\xDB \xDB\xDB\xDB\xDB\xDB \xDB\xDB\xDB\xDB   \xDB\xDB\xDB   \xDB\xDB\xDB\xDB",
+        " \xDB     \xDB   \xDB \xDB     \xDB     \xDB   \xDB \xDB   \xDB \xDB    ",
+        " \xDB     \xDB   \xDB \xDB     \xDB     \xDB   \xDB \xDB   \xDB \xDB    ",
+        " \xDB\xDB\xDB\xDB  \xDB\xDB\xDB\xDB  \xDB\xDB\xDB\xDB  \xDB\xDB\xDB\xDB  \xDB   \xDB \xDB   \xDB  \xDB\xDB\xDB ",
+        " \xDB     \xDB \xDB   \xDB     \xDB     \xDB   \xDB \xDB   \xDB     \xDB",
+        " \xDB     \xDB  \xDB  \xDB     \xDB     \xDB   \xDB \xDB   \xDB     \xDB",
+        " \xDB     \xDB   \xDB \xDB\xDB\xDB\xDB\xDB \xDB\xDB\xDB\xDB\xDB \xDB\xDB\xDB\xDB   \xDB\xDB\xDB  \xDB\xDB\xDB\xDB "
+    },
+    { ATTR_LIGHTBLUE, ATTR_LIGHTBLUE, ATTR_WHITE }
+};
+
+static const logo_t *pick_logo(dos_vendor_t vendor)
+{
+    switch (vendor) {
+        case DOS_VENDOR_MS:      return &logo_msdos;
+        case DOS_VENDOR_FREEDOS: return &logo_freedos;
+        default:                 return &logo_default;
+    }
+}
+
+static void print_logo(int col, int row, const logo_t *logo)
+{
     int i;
 
     for (i = 0; i < LOGO_ROWS; i++) {
         char band[15];
-        size_t len = strlen(lines[i]);
+        size_t len = strlen(logo->lines[i]);
 
-        copy_band(band, lines[i], len, 0, 14);
-        term_puts(col, row + i, band, ATTR_YELLOW);
+        copy_band(band, logo->lines[i], len, 0, 14);
+        term_puts(col, row + i, band, logo->band_attr[0]);
 
-        copy_band(band, lines[i], len, 14, 14);
-        term_puts(col + 14, row + i, band, ATTR_LIGHTBLUE);
+        copy_band(band, logo->lines[i], len, 14, 14);
+        term_puts(col + 14, row + i, band, logo->band_attr[1]);
 
-        copy_band(band, lines[i], len, 28, 14);
-        term_puts(col + 28, row + i, band, ATTR_LIGHTRED);
+        copy_band(band, logo->lines[i], len, 28, 14);
+        term_puts(col + 28, row + i, band, logo->band_attr[2]);
     }
 }
 
@@ -135,24 +188,33 @@ static void print_field(int col, int row, const char *label, const char *value,
     term_puts(col + len, row, value, value_attr);
 }
 
-void render_screen(const field_t *fields, int count, int show_logo, int plain)
+void render_screen(const field_t *fields, int count, int show_logo, int plain,
+                    dos_vendor_t vendor)
 {
     int i;
-    int col = show_logo ? INFO_COL : LOGO_COL;
     unsigned char label_attr = plain ? ATTR_NORMAL : ATTR_WHITE;
     int last_row = count;
 
     term_clear(ATTR_NORMAL);
 
     if (show_logo) {
-        print_logo(LOGO_COL, ROW_START);
+        print_logo(LOGO_COL, ROW_START, pick_logo(vendor));
         if (LOGO_ROWS > last_row)
             last_row = LOGO_ROWS;
     }
 
-    for (i = 0; i < count; i++)
-        print_field(col, ROW_START + i, fields[i].label, fields[i].value,
+    for (i = 0; i < count; i++) {
+        /* Only rows actually beside the logo need to leave room for it --
+         * once past the logo's own height, use the full screen width.
+         * Without this, every field past the 8th (the vast majority of
+         * them, now that there are ~19 fields) was needlessly squeezed
+         * into the narrow 36-column info strip and got clipped.
+         */
+        int field_col = (show_logo && i < LOGO_ROWS) ? INFO_COL : LOGO_COL;
+
+        print_field(field_col, ROW_START + i, fields[i].label, fields[i].value,
                     label_attr, ATTR_NORMAL);
+    }
 
     term_set_cursor(0, ROW_START + last_row);
 }
