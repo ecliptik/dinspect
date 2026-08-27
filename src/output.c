@@ -20,12 +20,13 @@
 #define LOGO_ROWS 8
 
 /* Standard DOS text-mode attribute values (background black throughout). */
-#define ATTR_YELLOW     14
-#define ATTR_LIGHTBLUE   9
-#define ATTR_LIGHTRED   12
-#define ATTR_LIGHTGRAY   7
-#define ATTR_WHITE      15
-#define ATTR_NORMAL      7
+#define ATTR_YELLOW       14
+#define ATTR_LIGHTBLUE     9
+#define ATTR_LIGHTRED     12
+#define ATTR_LIGHTGRAY     7
+#define ATTR_LIGHTMAGENTA 13
+#define ATTR_WHITE        15
+#define ATTR_NORMAL        7
 
 #define VIDEO_MK_FP(seg, off) \
     ((unsigned char _far *)(((unsigned long)(seg) << 16) | (unsigned)(off)))
@@ -77,75 +78,116 @@ static void term_set_cursor(int col, int row)
     }
 }
 
-/* Copies up to n bytes from src[start..] into dst, space-padding any
- * shortfall if src is shorter than start+n, and NUL-terminating dst.
- * (Several logo lines are intentionally shorter than the full 42-column
- * width, so this avoids reading past the end of those string literals.)
+/* One positioned, colored text fragment within a logo -- a whole
+ * 14-column color band for the wordmark-style logos, or a single
+ * letter's single row of block-character pixels for the stacked
+ * MS-DOS logo, where each letter needs its own solid color. Using the
+ * same small "list of runs" representation for both keeps print_logo()
+ * itself trivial regardless of how a given logo is composed.
  */
-static void copy_band(char *dst, const char *src, size_t src_len,
-                       size_t start, size_t n)
-{
-    size_t avail = (start < src_len) ? (src_len - start) : 0;
-    size_t take = (avail < n) ? avail : n;
-
-    if (take > 0)
-        memcpy(dst, src + start, take);
-    memset(dst + take, ' ', n - take);
-    dst[n] = '\0';
-}
+typedef struct {
+    int col, row; /* offset from the logo's own origin */
+    const char *text;
+    unsigned char attr;
+} logo_run_t;
 
 typedef struct {
-    const char *lines[LOGO_ROWS];
-    unsigned char band_attr[3]; /* columns 1-14 / 15-28 / 29-42 */
+    const logo_run_t *runs;
+    int run_count;
 } logo_t;
 
-static const logo_t logo_default = {
-    {
-        "88888888ba,     ,ad8888ba,    ad88888ba  ",
-        "88      `\"8b   d8\"'    `\"8b  d8\"     \"8b ",
-        "88        `8b d8'        `8b Y8,         ",
-        "88         88 88          88 `Y8aaaaa,   ",
-        "88         88 88          88   `\"\"\"\"\"8b, ",
-        "88         8P Y8,        ,8P         `8b ",
-        "88      .a8P   Y8a.    .a8P  Y8a     a8P ",
-        "88888888Y\"'     `\"Y8888Y\"'    \"Y88888P\""
-    },
-    { ATTR_YELLOW, ATTR_LIGHTBLUE, ATTR_LIGHTRED }
-};
-
-/* Blocky 5x7 block-letter banners (CP437 \xDB = full block), generated
- * from a small bitmap font rather than hand-transcribed, to avoid
- * transcription errors -- see the project's dev notes. Column bands
- * roughly land on MS / D / OS and FRE / ED / OS respectively, which is
- * why the palettes below are chosen per band rather than per letter.
+/* Generated (not hand-transcribed) from the 8 original wordmark lines,
+ * split into three 14-column color bands per row -- same appearance as
+ * the original fixed-3-band renderer, just expressed as runs.
  */
-static const logo_t logo_msdos = {
-    {
-        "",
-        "  \xDB   \xDB  \xDB\xDB\xDB\xDB       \xDB\xDB\xDB\xDB   \xDB\xDB\xDB   \xDB\xDB\xDB\xDB",
-        "  \xDB\xDB \xDB\xDB \xDB           \xDB   \xDB \xDB   \xDB \xDB    ",
-        "  \xDB \xDB \xDB \xDB           \xDB   \xDB \xDB   \xDB \xDB    ",
-        "  \xDB \xDB \xDB  \xDB\xDB\xDB  \xDB\xDB\xDB\xDB\xDB \xDB   \xDB \xDB   \xDB  \xDB\xDB\xDB ",
-        "  \xDB   \xDB     \xDB       \xDB   \xDB \xDB   \xDB     \xDB",
-        "  \xDB   \xDB     \xDB       \xDB   \xDB \xDB   \xDB     \xDB",
-        "  \xDB   \xDB \xDB\xDB\xDB\xDB        \xDB\xDB\xDB\xDB   \xDB\xDB\xDB  \xDB\xDB\xDB\xDB "
-    },
-    { ATTR_LIGHTGRAY, ATTR_LIGHTRED, ATTR_YELLOW }
+static const logo_run_t default_runs[] = {
+    { 0, 0, "88888888ba,   ", ATTR_YELLOW },
+    { 14, 0, "  ,ad8888ba,  ", ATTR_LIGHTBLUE },
+    { 28, 0, "  ad88888ba   ", ATTR_LIGHTRED },
+    { 0, 1, "88      `\"8b  ", ATTR_YELLOW },
+    { 14, 1, " d8\"'    `\"8b ", ATTR_LIGHTBLUE },
+    { 28, 1, " d8\"     \"8b  ", ATTR_LIGHTRED },
+    { 0, 2, "88        `8b ", ATTR_YELLOW },
+    { 14, 2, "d8'        `8b", ATTR_LIGHTBLUE },
+    { 28, 2, " Y8,          ", ATTR_LIGHTRED },
+    { 0, 3, "88         88 ", ATTR_YELLOW },
+    { 14, 3, "88          88", ATTR_LIGHTBLUE },
+    { 28, 3, " `Y8aaaaa,    ", ATTR_LIGHTRED },
+    { 0, 4, "88         88 ", ATTR_YELLOW },
+    { 14, 4, "88          88", ATTR_LIGHTBLUE },
+    { 28, 4, "   `\"\"\"\"\"8b,  ", ATTR_LIGHTRED },
+    { 0, 5, "88         8P ", ATTR_YELLOW },
+    { 14, 5, "Y8,        ,8P", ATTR_LIGHTBLUE },
+    { 28, 5, "         `8b  ", ATTR_LIGHTRED },
+    { 0, 6, "88      .a8P  ", ATTR_YELLOW },
+    { 14, 6, " Y8a.    .a8P ", ATTR_LIGHTBLUE },
+    { 28, 6, " Y8a     a8P  ", ATTR_LIGHTRED },
+    { 0, 7, "88888888Y\"'   ", ATTR_YELLOW },
+    { 14, 7, "  `\"Y8888Y\"'  ", ATTR_LIGHTBLUE },
+    { 28, 7, "  \"Y88888P\"   ", ATTR_LIGHTRED },
 };
+static const logo_t logo_default = { default_runs, sizeof(default_runs) / sizeof(default_runs[0]) };
 
-static const logo_t logo_freedos = {
-    {
-        "",
-        " \xDB\xDB\xDB\xDB\xDB \xDB\xDB\xDB\xDB  \xDB\xDB\xDB\xDB\xDB \xDB\xDB\xDB\xDB\xDB \xDB\xDB\xDB\xDB   \xDB\xDB\xDB   \xDB\xDB\xDB\xDB",
-        " \xDB     \xDB   \xDB \xDB     \xDB     \xDB   \xDB \xDB   \xDB \xDB    ",
-        " \xDB     \xDB   \xDB \xDB     \xDB     \xDB   \xDB \xDB   \xDB \xDB    ",
-        " \xDB\xDB\xDB\xDB  \xDB\xDB\xDB\xDB  \xDB\xDB\xDB\xDB  \xDB\xDB\xDB\xDB  \xDB   \xDB \xDB   \xDB  \xDB\xDB\xDB ",
-        " \xDB     \xDB \xDB   \xDB     \xDB     \xDB   \xDB \xDB   \xDB     \xDB",
-        " \xDB     \xDB  \xDB  \xDB     \xDB     \xDB   \xDB \xDB   \xDB     \xDB",
-        " \xDB     \xDB   \xDB \xDB\xDB\xDB\xDB\xDB \xDB\xDB\xDB\xDB\xDB \xDB\xDB\xDB\xDB   \xDB\xDB\xDB  \xDB\xDB\xDB\xDB "
-    },
-    { ATTR_LIGHTBLUE, ATTR_LIGHTBLUE, ATTR_WHITE }
+/* Stacked "MS" (small, top, gray) over "DOS" (bigger, bottom, D=red
+ * O=magenta S=yellow) -- matching the classic MS-DOS badge's two-line
+ * layout and color story, rather than a single left-to-right wordmark.
+ * Per-letter block-character bitmaps generated from a small 5-wide
+ * font (3 rows tall for MS, 5 rows tall for DOS) rather than
+ * hand-transcribed, to avoid transcription errors -- see the project's
+ * dev notes for the generator.
+ */
+static const logo_run_t msdos_runs[] = {
+    { 15, 0, "\xDB   \xDB", ATTR_LIGHTGRAY },
+    { 15, 1, "\xDB\xDB \xDB\xDB", ATTR_LIGHTGRAY },
+    { 15, 2, "\xDB   \xDB", ATTR_LIGHTGRAY },
+    { 21, 0, " \xDB\xDB\xDB\xDB", ATTR_LIGHTGRAY },
+    { 21, 1, "  \xDB\xDB ", ATTR_LIGHTGRAY },
+    { 21, 2, "\xDB\xDB\xDB\xDB ", ATTR_LIGHTGRAY },
+    { 12, 3, "\xDB\xDB\xDB\xDB ", ATTR_LIGHTRED },
+    { 12, 4, "\xDB   \xDB", ATTR_LIGHTRED },
+    { 12, 5, "\xDB   \xDB", ATTR_LIGHTRED },
+    { 12, 6, "\xDB   \xDB", ATTR_LIGHTRED },
+    { 12, 7, "\xDB\xDB\xDB\xDB ", ATTR_LIGHTRED },
+    { 18, 3, " \xDB\xDB\xDB ", ATTR_LIGHTMAGENTA },
+    { 18, 4, "\xDB   \xDB", ATTR_LIGHTMAGENTA },
+    { 18, 5, "\xDB   \xDB", ATTR_LIGHTMAGENTA },
+    { 18, 6, "\xDB   \xDB", ATTR_LIGHTMAGENTA },
+    { 18, 7, " \xDB\xDB\xDB ", ATTR_LIGHTMAGENTA },
+    { 24, 3, " \xDB\xDB\xDB\xDB", ATTR_YELLOW },
+    { 24, 4, "\xDB    ", ATTR_YELLOW },
+    { 24, 5, " \xDB\xDB\xDB ", ATTR_YELLOW },
+    { 24, 6, "    \xDB", ATTR_YELLOW },
+    { 24, 7, "\xDB\xDB\xDB\xDB ", ATTR_YELLOW },
 };
+static const logo_t logo_msdos = { msdos_runs, sizeof(msdos_runs) / sizeof(msdos_runs[0]) };
+
+/* Generated the same way as the default logo's runs (see above), from
+ * the original 8 FreeDOS wordmark lines split into three color bands.
+ */
+static const logo_run_t freedos_runs[] = {
+    { 0, 1, " \xDB\xDB\xDB\xDB\xDB \xDB\xDB\xDB\xDB  \xDB", ATTR_LIGHTBLUE },
+    { 14, 1, "\xDB\xDB\xDB\xDB \xDB\xDB\xDB\xDB\xDB \xDB\xDB\xDB", ATTR_LIGHTBLUE },
+    { 28, 1, "\xDB   \xDB\xDB\xDB   \xDB\xDB\xDB\xDB", ATTR_WHITE },
+    { 0, 2, " \xDB     \xDB   \xDB \xDB", ATTR_LIGHTBLUE },
+    { 14, 2, "     \xDB     \xDB  ", ATTR_LIGHTBLUE },
+    { 28, 2, " \xDB \xDB   \xDB \xDB    ", ATTR_WHITE },
+    { 0, 3, " \xDB     \xDB   \xDB \xDB", ATTR_LIGHTBLUE },
+    { 14, 3, "     \xDB     \xDB  ", ATTR_LIGHTBLUE },
+    { 28, 3, " \xDB \xDB   \xDB \xDB    ", ATTR_WHITE },
+    { 0, 4, " \xDB\xDB\xDB\xDB  \xDB\xDB\xDB\xDB  \xDB", ATTR_LIGHTBLUE },
+    { 14, 4, "\xDB\xDB\xDB  \xDB\xDB\xDB\xDB  \xDB  ", ATTR_LIGHTBLUE },
+    { 28, 4, " \xDB \xDB   \xDB  \xDB\xDB\xDB ", ATTR_WHITE },
+    { 0, 5, " \xDB     \xDB \xDB   \xDB", ATTR_LIGHTBLUE },
+    { 14, 5, "     \xDB     \xDB  ", ATTR_LIGHTBLUE },
+    { 28, 5, " \xDB \xDB   \xDB     \xDB", ATTR_WHITE },
+    { 0, 6, " \xDB     \xDB  \xDB  \xDB", ATTR_LIGHTBLUE },
+    { 14, 6, "     \xDB     \xDB  ", ATTR_LIGHTBLUE },
+    { 28, 6, " \xDB \xDB   \xDB     \xDB", ATTR_WHITE },
+    { 0, 7, " \xDB     \xDB   \xDB \xDB", ATTR_LIGHTBLUE },
+    { 14, 7, "\xDB\xDB\xDB\xDB \xDB\xDB\xDB\xDB\xDB \xDB\xDB\xDB", ATTR_LIGHTBLUE },
+    { 28, 7, "\xDB   \xDB\xDB\xDB  \xDB\xDB\xDB\xDB ", ATTR_WHITE },
+};
+static const logo_t logo_freedos = { freedos_runs, sizeof(freedos_runs) / sizeof(freedos_runs[0]) };
 
 static const logo_t *pick_logo(dos_vendor_t vendor)
 {
@@ -160,18 +202,9 @@ static void print_logo(int col, int row, const logo_t *logo)
 {
     int i;
 
-    for (i = 0; i < LOGO_ROWS; i++) {
-        char band[15];
-        size_t len = strlen(logo->lines[i]);
-
-        copy_band(band, logo->lines[i], len, 0, 14);
-        term_puts(col, row + i, band, logo->band_attr[0]);
-
-        copy_band(band, logo->lines[i], len, 14, 14);
-        term_puts(col + 14, row + i, band, logo->band_attr[1]);
-
-        copy_band(band, logo->lines[i], len, 28, 14);
-        term_puts(col + 28, row + i, band, logo->band_attr[2]);
+    for (i = 0; i < logo->run_count; i++) {
+        const logo_run_t *r = &logo->runs[i];
+        term_puts(col + r->col, row + r->row, r->text, r->attr);
     }
 }
 
