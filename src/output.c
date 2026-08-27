@@ -216,17 +216,57 @@ static void print_logo(int col, int row, const logo_t *logo)
     }
 }
 
-static void print_field(int col, int row, const char *label, const char *value,
-                         unsigned char label_attr, unsigned char value_attr)
+/* Writes "<label>: <value>" starting at (col, row); if the value doesn't
+ * fit in the remaining columns, wraps the rest onto the next row(s),
+ * indented to line up under where the value started (a hanging indent)
+ * rather than clipping it at the screen edge. Returns how many rows
+ * this field ended up using, so the caller can advance past all of
+ * them before placing the next field.
+ *
+ * Screen-only: the plain-text file output (fileout.c) always writes
+ * one field per line regardless of length, since there's no fixed
+ * width to wrap against in a text file and multi-line output would
+ * complicate parsing it back out.
+ */
+static int print_field(int col, int row, const char *label, const char *value,
+                        unsigned char label_attr, unsigned char value_attr)
 {
     char text[80];
-    int len;
+    int value_col;
+    int avail;
+    int rows_used = 0;
+    const char *v = value;
 
     sprintf(text, "%s: ", label);
     term_puts(col, row, text, label_attr);
 
-    len = (int)strlen(text);
-    term_puts(col + len, row, value, value_attr);
+    value_col = col + (int)strlen(text);
+    avail = SCREEN_COLS - value_col;
+    if (avail < 1)
+        avail = 1; /* pathological: label alone already fills the row */
+
+    for (;;) {
+        int len = (int)strlen(v);
+
+        if (len <= avail) {
+            term_puts(value_col, row + rows_used, v, value_attr);
+            rows_used++;
+            break;
+        }
+
+        {
+            char chunk[80];
+
+            memcpy(chunk, v, (size_t)avail);
+            chunk[avail] = '\0';
+            term_puts(value_col, row + rows_used, chunk, value_attr);
+        }
+
+        v += avail;
+        rows_used++;
+    }
+
+    return rows_used;
 }
 
 void render_screen(const field_t *fields, int count, int show_logo, int plain,
@@ -235,7 +275,8 @@ void render_screen(const field_t *fields, int count, int show_logo, int plain,
     int i;
     int field_col = show_logo ? INFO_COL : LOGO_COL;
     unsigned char label_attr = plain ? ATTR_NORMAL : ATTR_WHITE;
-    int last_row = count;
+    int row_cursor = ROW_START;
+    int logo_height = 0;
 
     term_clear(ATTR_NORMAL);
 
@@ -243,19 +284,23 @@ void render_screen(const field_t *fields, int count, int show_logo, int plain,
         const logo_t *logo = pick_logo(vendor);
 
         print_logo(LOGO_COL, ROW_START, logo);
-        if (logo->height > last_row)
-            last_row = logo->height;
+        logo_height = logo->height;
     }
 
     /* Every field lines up at the same column, regardless of row --
      * intentionally not "full width once past the logo": a jagged left
      * edge (narrow column for the first few fields, full width for the
-     * rest) read worse than a consistently-aligned column that simply
-     * clips a very long value at the screen edge on rare occasions.
+     * rest) read worse than a consistently-aligned column. A value that
+     * doesn't fit now wraps onto extra rows (print_field's return value)
+     * instead of clipping, so row_cursor has to advance by however many
+     * rows each field actually used, not a flat one row per field.
      */
     for (i = 0; i < count; i++)
-        print_field(field_col, ROW_START + i, fields[i].label, fields[i].value,
-                    label_attr, ATTR_NORMAL);
+        row_cursor += print_field(field_col, row_cursor, fields[i].label, fields[i].value,
+                                   label_attr, ATTR_NORMAL);
 
-    term_set_cursor(0, ROW_START + last_row);
+    if (ROW_START + logo_height > row_cursor)
+        row_cursor = ROW_START + logo_height;
+
+    term_set_cursor(0, row_cursor);
 }

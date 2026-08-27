@@ -33,7 +33,7 @@ void get_cpu_info(char *buf, size_t buflen);
 void get_cpu_features(char *buf, size_t buflen);
 
 /* Formats a clock speed into buf:
- *   "<n> MHz (RDTSC)"    - measured via the time-stamp counter
+ *   "<n> MHz"            - measured via the time-stamp counter
  *                          (Pentium-class+ with TSC); a real reading.
  *   "~<n> MHz (estimated)" - derived from a PIT channel 2 timed loop
  *                          (used when there's no TSC) via a single

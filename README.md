@@ -112,5 +112,3 @@ waived all copyright and related or neighboring rights to this work.
 See [LICENSE](LICENSE) (CC0 1.0 Universal), and
 [THIRD-PARTY.md](THIRD-PARTY.md) for where outside material was
 consulted (and why it doesn't affect that CC0 status).
-
-Pull requests welcome!

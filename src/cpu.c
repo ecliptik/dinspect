@@ -396,7 +396,7 @@ void get_cpu_speed(char *buf, size_t buflen)
     ensure_probed();
 
     if (g_probe.has_tsc && g_probe.speed_value > 0UL)
-        sprintf(buf, "%lu MHz (RDTSC)", g_probe.speed_value);
+        sprintf(buf, "%lu MHz", g_probe.speed_value);
     else if (g_probe.speed_value > 0UL)
         sprintf(buf, "~%lu MHz (estimated)", g_probe.speed_value);
     else {
