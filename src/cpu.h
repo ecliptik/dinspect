@@ -16,11 +16,15 @@
 /* Formats "YES"/"no" into buf depending on math coprocessor presence. */
 void get_fpu_status(char *buf, size_t buflen);
 
-/* Formats "<Vendor> <Model> (f<family>/m<model>/s<stepping>)" if CPUID
- * is available and the (vendor, family, model) is recognized (e.g.
- * "Intel 486DX2 (f4/m3/s2)", "Intel Pentium OverDrive (f5/m3/s1)");
- * falls back to "<Vendor> f<family>/m<model>/s<stepping>" if CPUID
- * works but the specific model isn't in the table, or a coarse
+/* Formats "<Vendor> <Model>" if CPUID is available and the (vendor,
+ * family, model) is recognized (e.g. "Intel 486DX2", "Intel Pentium
+ * OverDrive") -- matching neofetch/fastfetch's convention of showing
+ * a friendly product name rather than raw identifiers whenever one is
+ * available. Falls back to "<Vendor> f<family>/m<model>/s<stepping>"
+ * (CPUID leaf 1's raw family/model/stepping fields) if CPUID works but
+ * the specific model isn't in cpu_model_name()'s table -- there's no
+ * friendly name to fall back to in that case, since pre-Pentium-4
+ * CPUID has no brand-string leaf the way modern CPUs do. A coarse
  * pre-CPUID class description ("8086/80286-class (pre-386)", "80386",
  * or "80486 (no CPUID)") if CPUID isn't available at all.
  */

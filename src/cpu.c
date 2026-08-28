@@ -549,8 +549,7 @@ void get_cpu_info(char *buf, size_t buflen)
         const char *vname = short_vendor(g_probe.vendor);
 
         if (model_name != NULL)
-            sprintf(buf, "%s %s (f%u/m%u/s%u)", vname, model_name,
-                    g_probe.family, g_probe.model, g_probe.stepping);
+            sprintf(buf, "%s %s", vname, model_name);
         else
             sprintf(buf, "%s f%u/m%u/s%u", vname,
                     g_probe.family, g_probe.model, g_probe.stepping);
