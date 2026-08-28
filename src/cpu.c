@@ -288,7 +288,65 @@ static unsigned long measure_loop_rate_via_pit(void)
 
 static unsigned long estimate_mhz_from_loop_rate(unsigned long iterations_per_sec)
 {
-    return (iterations_per_sec * EST_CYCLES_PER_ITERATION) / 1000000UL;
+    /* Round to the nearest whole MHz (+ half a million before the
+     * truncating divide) rather than always flooring. Flooring alone
+     * pushes a value like 64.87 MHz down to 64, which lands almost
+     * exactly between two real speed grades and can throw off
+     * snap_to_plausible_mhz() below towards the wrong one (63 rather
+     * than the correct 66); rounding to 65 first keeps it unambiguous.
+     */
+    return (iterations_per_sec * EST_CYCLES_PER_ITERATION + 500000UL) / 1000000UL;
+}
+
+/* Real DOS-era CPUs of the generation that reaches this loop-estimate
+ * path (386/486-class, plus the 486-socket Pentium OverDrive) only ever
+ * shipped at a bus speed times a small set of clock multipliers -- they
+ * can't run at just any MHz value. Listed as bus x multiplier so the
+ * provenance of each entry is visible:
+ *   16, 20, 25, 33, 40 MHz  - x1 (386/486 with no clock doubling)
+ *   32, 40, 50, 66, 80 MHz  - x2 (486DX2)
+ *   63, 83 MHz              - x2.5 (Pentium OverDrive for 486 boards --
+ *                             the one documented exception to the
+ *                             "even multiplier" pattern above)
+ *   75, 100 MHz             - x3 (486DX4)
+ *   133 MHz                 - x4 (AMD Am5x86)
+ * snap_to_plausible_mhz() rounds a noisy loop-based estimate (see the
+ * ~8% run-to-run variance noted under EST_CYCLES_PER_ITERATION above)
+ * to whichever of these is numerically closest, so "~59 MHz" becomes
+ * the "~66 MHz" a real DX2-66 actually is instead of a value no chip
+ * was ever binned at. Ties favor the lower speed. A CPU running at a
+ * bus/multiplier combination not listed here (rare for this era, but
+ * possible) will get pulled to the nearest listed speed instead of
+ * reporting its true one -- an accepted tradeoff for correcting the
+ * much more common case of measurement noise landing between two real
+ * speeds.
+ */
+static unsigned long snap_to_plausible_mhz(unsigned long raw_mhz)
+{
+    static const unsigned long PLAUSIBLE_MHZ[] = {
+        16UL, 20UL, 25UL, 32UL, 33UL, 40UL, 50UL, 63UL,
+        66UL, 75UL, 80UL, 83UL, 100UL, 133UL
+    };
+    size_t i;
+    unsigned long best = raw_mhz;
+    unsigned long best_diff = (unsigned long)-1L;
+
+    if (raw_mhz == 0UL)
+        return 0UL; /* loop rate measurement failed outright -- leave it
+                      * as UNKNOWN, don't snap 0 to the nearest table
+                      * entry */
+
+    for (i = 0; i < sizeof(PLAUSIBLE_MHZ) / sizeof(PLAUSIBLE_MHZ[0]); i++) {
+        unsigned long candidate = PLAUSIBLE_MHZ[i];
+        unsigned long diff = (raw_mhz > candidate) ? raw_mhz - candidate : candidate - raw_mhz;
+
+        if (diff < best_diff) {
+            best_diff = diff;
+            best = candidate;
+        }
+    }
+
+    return best;
 }
 
 /* Recognized CPUID (family, model) -> friendly name, for the vendors
@@ -515,7 +573,8 @@ static void ensure_probed(void)
     if (g_probe.has_tsc)
         g_probe.speed_value = measure_mhz_via_tsc();
     else
-        g_probe.speed_value = estimate_mhz_from_loop_rate(measure_loop_rate_via_pit());
+        g_probe.speed_value = snap_to_plausible_mhz(
+            estimate_mhz_from_loop_rate(measure_loop_rate_via_pit()));
 }
 
 void get_fpu_status(char *buf, size_t buflen)

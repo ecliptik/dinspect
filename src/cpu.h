@@ -42,10 +42,14 @@ void get_cpu_features(char *buf, size_t buflen);
  *   "~<n> MHz" - derived from a PIT channel 0 timed loop (used when
  *               there's no TSC) via a cycles-per-iteration constant
  *               calibrated against two real data points so far -- see
- *               the EST_CYCLES_PER_ITERATION comment in cpu.c. The
- *               leading "~" marks it as approximate, not exact -- this
+ *               the EST_CYCLES_PER_ITERATION comment in cpu.c. This
  *               method has also shown ~8% run-to-run variance on
- *               identical hardware, so treat a single reading loosely.
+ *               identical hardware, so the raw estimate is snapped to
+ *               the nearest bus-speed x multiplier a real 386/486-class
+ *               CPU actually shipped at (see snap_to_plausible_mhz() in
+ *               cpu.c) before formatting -- e.g. a noisy "~59 MHz"
+ *               reading on a true DX2-66 becomes "~66 MHz". The leading
+ *               "~" still marks it as derived/approximate, not exact.
  *   "UNKNOWN"  - neither measurement produced a usable result.
  */
 void get_cpu_speed(char *buf, size_t buflen);
