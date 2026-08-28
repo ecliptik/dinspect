@@ -12,7 +12,12 @@
 
 #include <stddef.h>
 
-/* Formats the raw BLASTER environment variable into buf, or "not set". */
+/* Formats the raw BLASTER environment variable into buf, with the
+ * card model name appended in parens if the 'T' (type) field is one
+ * Creative Labs documented (e.g. "A220 I7 D1 H5 T6 (Sound Blaster
+ * 16/AWE32/AWE64)"), or just the raw value if 'T' is absent or
+ * unrecognized. "not set" if there's no BLASTER env var at all.
+ */
 void get_blaster_env(char *buf, size_t buflen);
 
 /* Formats "OPL2/3 detected" or "not detected" into buf, via the classic

@@ -24,19 +24,13 @@
 
 #define SOUND_POLL_MAX 60000UL
 
-void get_blaster_env(char *buf, size_t buflen)
-{
-    const char *blaster = getenv("BLASTER");
-
-    strncpy(buf, (blaster != NULL) ? blaster : "not set", buflen - 1);
-    buf[buflen - 1] = '\0';
-}
-
-/* Parses the 'A' (base address, hex) field out of the BLASTER env var,
- * e.g. "A220 I5 D1 H5 T6" -> 0x220. Returns 1 and sets *port on
- * success, 0 if BLASTER isn't set or has no 'A' field.
+/* Parses a single-letter, decimal- or hex-valued field out of the
+ * BLASTER env var, e.g. field='A' on "A220 I5 D1 H5 T6" -> 0x220
+ * (base), field='T' -> 6 (decimal). Returns 1 and sets *val on
+ * success, 0 if BLASTER isn't set or has no such field. Shared by the
+ * base-port and card-type lookups below rather than duplicated.
  */
-static int blaster_base_port(unsigned *port)
+static int blaster_field(char field, int is_hex, unsigned *val)
 {
     const char *blaster = getenv("BLASTER");
     const char *p;
@@ -45,15 +39,60 @@ static int blaster_base_port(unsigned *port)
         return 0;
 
     for (p = blaster; *p != '\0'; p++) {
-        if ((*p == 'A' || *p == 'a') && (p == blaster || p[-1] == ' ')) {
-            unsigned long val = strtoul(p + 1, NULL, 16);
-            if (val > 0UL && val < 0x400UL) {
-                *port = (unsigned)val;
+        if ((*p == field || *p == (field | 0x20)) && (p == blaster || p[-1] == ' ')) {
+            unsigned long parsed = strtoul(p + 1, NULL, is_hex ? 16 : 10);
+            if (parsed > 0UL && (!is_hex || parsed < 0x400UL)) {
+                *val = (unsigned)parsed;
                 return 1;
             }
         }
     }
     return 0;
+}
+
+static int blaster_base_port(unsigned *port)
+{
+    return blaster_field('A', 1, port);
+}
+
+/* Card model for the BLASTER env var's 'T' (type) field -- a
+ * long-documented Creative Labs convention (every DOS-era sound
+ * driver/game that reads BLASTER agrees on these), not something this
+ * project invented. T5 and T7-T9 were never assigned a model by
+ * Creative; T10 (MCA original SoundBlaster) is rare enough in
+ * practice that it's grouped with "unrecognized" here rather than
+ * given its own table row.
+ */
+static const char *blaster_type_name(unsigned type)
+{
+    switch (type) {
+        case 1: return "Sound Blaster 1.x";
+        case 2: return "Sound Blaster Pro";
+        case 3: return "Sound Blaster 2.0";
+        case 4: return "Sound Blaster Pro 2.0";
+        case 6: return "Sound Blaster 16/AWE32/AWE64";
+        default: return NULL;
+    }
+}
+
+void get_blaster_env(char *buf, size_t buflen)
+{
+    const char *blaster = getenv("BLASTER");
+    unsigned type;
+    const char *type_name;
+
+    if (blaster == NULL) {
+        strncpy(buf, "not set", buflen - 1);
+        buf[buflen - 1] = '\0';
+        return;
+    }
+
+    if (blaster_field('T', 0, &type) && (type_name = blaster_type_name(type)) != NULL)
+        sprintf(buf, "%s (%s)", blaster, type_name);
+    else
+        strncpy(buf, blaster, buflen - 1);
+
+    buf[buflen - 1] = '\0';
 }
 
 #define OPL_PORT 0x388
