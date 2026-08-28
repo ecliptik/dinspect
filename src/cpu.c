@@ -290,20 +290,24 @@ static unsigned long measure_loop_rate_via_pit(void)
 
 /* Cycles-per-iteration estimate for the inner NOP-counting loop above.
  * Originally a reasoned guess from published 80386 instruction timings
- * (NOP + INC/CMP mem + taken Jcc summed to ~20 cycles) since no real
- * pre-Pentium hardware was available to calibrate against -- see the
- * file header comment. That guess was ~1.7x too high: real-hardware
- * testing on a documented 486DX2-50 (vcctrl's rig) measured a loop
- * rate of 4,256,000 iterations/sec, which a true 50 MHz chip only
- * reaches at ~11.7 cycles/iteration, not 20 -- 486-era pipelining
- * apparently makes this sequence cheaper per iteration than the
- * 386-timing-based estimate assumed. 12 is that measurement rounded
- * up slightly. Still a single real calibration point, not a
- * per-architecture-verified constant -- if a different CPU generation
- * turns out to need a different value, that's the next thing to
- * revisit here.
+ * (~20 cycles), then a value derived from an early real-hardware
+ * measurement (~12) -- but that measurement used the PIT channel-2
+ * timing approach later found to be unreliable on real hardware (see
+ * git log: measure_loop_rate_via_pit() now reads channel 0 instead,
+ * after channel 2's readings proved to not reflect true elapsed time
+ * at all despite several attempts to fix its reprogramming sequence).
+ * Once channel-0 timing was confirmed solid and reproducible (vcctrl:
+ * identical elapsed_ticks/rate across 5 consecutive runs), it measured
+ * a loop rate of 2,048,000 iterations/sec on the same documented
+ * 486DX2-50, which a true 50 MHz chip reaches at ~24.4 cycles/
+ * iteration -- almost exactly double the old, now-understood-to-be-
+ * built-on-broken-timing value. 24 is that measurement rounded to the
+ * nearest whole number (49.15 MHz for this data point). Still a
+ * single real calibration point, not a per-architecture-verified
+ * constant -- if a different CPU generation turns out to need a
+ * different value, that's the next thing to revisit here.
  */
-#define EST_CYCLES_PER_ITERATION 12UL
+#define EST_CYCLES_PER_ITERATION 24UL
 
 static unsigned long estimate_mhz_from_loop_rate(unsigned long iterations_per_sec)
 {
