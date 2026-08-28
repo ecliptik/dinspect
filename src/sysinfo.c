@@ -59,7 +59,7 @@ void get_dos_version(char *buf, size_t buflen)
     const char *vendor_name;
 
     switch (get_dos_vendor()) {
-        case DOS_VENDOR_IBM:     vendor_name = "IBM DOS";     break;
+        case DOS_VENDOR_IBM:     vendor_name = "PC DOS";      break;
         case DOS_VENDOR_FREEDOS: vendor_name = "FreeDOS";     break;
         case DOS_VENDOR_MS:      vendor_name = "MS DOS";      break;
         case DOS_VENDOR_DR:      vendor_name = "DR-DOS";      break;
