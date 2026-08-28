@@ -165,6 +165,13 @@ int main(int argc, char *argv[])
 
     debug_log("main() started");
 
+    {
+        unsigned char _far *mode_byte = DIAG_MK_FP(0x0040, 0x0049);
+        char mode_msg[48];
+        sprintf(mode_msg, "video: BDA mode byte at entry = %u", (unsigned)*mode_byte);
+        debug_log(mode_msg);
+    }
+
     if (argc > 1 && stricmp(argv[1], "--video-diag") == 0) {
         video_probe_diagnostic();
         return 0;
@@ -228,6 +235,13 @@ int main(int argc, char *argv[])
 
     if (!show_undetected)
         count = filter_undetected(fields, count);
+
+    {
+        unsigned char _far *mode_byte = DIAG_MK_FP(0x0040, 0x0049);
+        char mode_msg[48];
+        sprintf(mode_msg, "video: BDA mode byte before render = %u", (unsigned)*mode_byte);
+        debug_log(mode_msg);
+    }
 
     debug_log("starting render_screen");
     render_screen(fields, count, show_logo, plain, no_color, get_dos_vendor());

@@ -21,7 +21,8 @@ typedef enum {
     DOS_VENDOR_UNKNOWN,
     DOS_VENDOR_IBM,
     DOS_VENDOR_MS,
-    DOS_VENDOR_FREEDOS
+    DOS_VENDOR_FREEDOS,
+    DOS_VENDOR_DR
 } dos_vendor_t;
 
 /* Raw DOS vendor, via the same INT 21h AH=30h call get_dos_version()

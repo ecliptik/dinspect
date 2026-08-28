@@ -18,8 +18,33 @@ static unsigned char read_dos_vendor_byte(void)
     return vendor;
 }
 
+/* DR-DOS (3.41+) answers its own "DR" signature call (INT 21h
+ * AX=4452h, i.e. the ASCII bytes 'D','R') with the carry flag clear;
+ * any DOS that doesn't recognize it sets carry instead. This is the
+ * documented way to identify DR-DOS specifically -- unlike IBM/MS/
+ * FreeDOS, it doesn't reliably publish a distinct OEM byte through the
+ * generic INT 21h AH=30h call, so it's checked first, before falling
+ * back to the OEM-byte switch below.
+ */
+static int is_drdos(void)
+{
+    unsigned flags;
+
+    _asm {
+        mov ax, 4452h
+        int 21h
+        pushf
+        pop flags
+    }
+
+    return (flags & 1u) == 0u;
+}
+
 dos_vendor_t get_dos_vendor(void)
 {
+    if (is_drdos())
+        return DOS_VENDOR_DR;
+
     switch (read_dos_vendor_byte()) {
         case 0x00: return DOS_VENDOR_IBM;
         case 0xFD: return DOS_VENDOR_FREEDOS;
@@ -37,6 +62,7 @@ void get_dos_version(char *buf, size_t buflen)
         case DOS_VENDOR_IBM:     vendor_name = "IBM DOS";     break;
         case DOS_VENDOR_FREEDOS: vendor_name = "FreeDOS";     break;
         case DOS_VENDOR_MS:      vendor_name = "MS DOS";      break;
+        case DOS_VENDOR_DR:      vendor_name = "DR-DOS";      break;
         default:                 vendor_name = "Unknown DOS"; break;
     }
 
