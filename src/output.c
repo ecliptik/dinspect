@@ -784,9 +784,15 @@ static void print_logo(int col, int row, const logo_t *logo, int no_color)
 /* Writes "<label>: <value>" starting at (col, row); if the value doesn't
  * fit in the remaining columns, wraps the rest onto the next row(s),
  * indented to line up under where the value started (a hanging indent)
- * rather than clipping it at the screen edge. Returns how many rows
- * this field ended up using, so the caller can advance past all of
- * them before placing the next field.
+ * rather than clipping it at the screen edge. Wraps on word boundaries
+ * -- a word that would otherwise be split across the edge moves to the
+ * next row whole instead -- unless a single word alone is longer than
+ * the entire available width, the one case there's no better option
+ * than a hard break. A 1-column margin is kept at the screen's right
+ * edge (avail leaves it out entirely) so wrapped text never touches
+ * the last column. Returns how many rows this field ended up using,
+ * so the caller can advance past all of them before placing the next
+ * field.
  *
  * Screen-only: the plain-text file output (fileout.c) always writes
  * one field per line regardless of length, since there's no fixed
@@ -806,7 +812,7 @@ static int print_field(int col, int row, const char *label, const char *value,
     term_puts(col, row, text, label_attr);
 
     value_col = col + (int)strlen(text);
-    avail = SCREEN_COLS - value_col;
+    avail = SCREEN_COLS - value_col - 1; /* -1: right-edge margin */
     if (avail < 1)
         avail = 1; /* pathological: label alone already fills the row */
 
@@ -821,13 +827,27 @@ static int print_field(int col, int row, const char *label, const char *value,
 
         {
             char chunk[80];
+            int chunk_len = -1;
+            int j;
 
-            memcpy(chunk, v, (size_t)avail);
-            chunk[avail] = '\0';
+            for (j = avail - 1; j >= 0; j--) {
+                if (v[j] == ' ') {
+                    chunk_len = j;
+                    break;
+                }
+            }
+            if (chunk_len < 0)
+                chunk_len = avail; /* no space to break on: hard-cut */
+
+            memcpy(chunk, v, (size_t)chunk_len);
+            chunk[chunk_len] = '\0';
             term_puts(value_col, row + rows_used, chunk, value_attr);
+
+            v += chunk_len;
+            while (*v == ' ')
+                v++; /* skip the space(s) the wrap broke on */
         }
 
-        v += avail;
         rows_used++;
     }
 

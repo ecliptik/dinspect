@@ -24,17 +24,16 @@
  * trustworthy MHz reading. Otherwise, a loop timed against PIT channel
  * 2 (the PC speaker channel, silently gated via port 0x61 bit 0, left
  * exactly as found afterward), converted to an *estimated* MHz figure
- * via a single reasoned cycles-per-iteration constant (see
+ * via a single cycles-per-iteration constant (see
  * EST_CYCLES_PER_ITERATION below) -- always labeled "~N MHz
  * (estimated)" rather than presented as a precise reading, since that
- * constant is derived from published 80386 instruction timings and
- * the loop's disassembly, not calibrated against real silicon (no
- * pre-Pentium hardware was available during development to calibrate
- * against). An earlier version of this code avoided the MHz unit
- * entirely for exactly this reason; the current approach trades a bit
- * of that caution for actually answering "how fast is this CPU"
- * in the units people expect, while keeping the "estimated" label
- * front and center rather than burying the caveat in a comment only.
+ * constant is only calibrated against one real data point so far (a
+ * 486DX2-50), not verified across CPU generations. An earlier version
+ * of this code avoided the MHz unit entirely for exactly this reason;
+ * the current approach trades a bit of that caution for actually
+ * answering "how fast is this CPU" in the units people expect, while
+ * keeping the "estimated" label front and center rather than burying
+ * the caveat in a comment only.
  */
 
 #include <stdio.h>
@@ -42,23 +41,6 @@
 #include "cpu.h"
 #include "cpu386.h"
 #include "sysinfo.h"
-
-/* TEMPORARY diagnostic instrumentation for the real-hardware CPU-speed
- * estimation investigation (vcctrl reported ~605 MHz "estimated" for a
- * real 486DX2-50, which should read ~50) -- logs the raw intermediate
- * values from measure_loop_rate_via_pit() so the actual discrepancy
- * can be pinpointed from a real run instead of guessed at. To be
- * removed once the real cause is found and fixed.
- */
-static void debug_log(const char *msg)
-{
-    FILE *fp = fopen("DFDEBUG.LOG", "a");
-
-    if (fp != NULL) {
-        fprintf(fp, "%s\n", msg);
-        fclose(fp);
-    }
-}
 
 typedef struct {
     int probed;
@@ -186,7 +168,7 @@ static unsigned long measure_loop_rate_via_pit(void)
 {
     unsigned char port61_orig;
     unsigned start_count, count;
-    unsigned long elapsed_pit_ticks, elapsed_ms, iterations, pass_count;
+    unsigned long elapsed_pit_ticks, elapsed_ms, iterations;
     unsigned inner;
 
     _asm {
@@ -244,8 +226,6 @@ static unsigned long measure_loop_rate_via_pit(void)
                 break;
         }
 
-        pass_count = pass;
-
         if (pass >= PIT_LOOP_MAX_PASSES)
             elapsed_pit_ticks = 0UL; /* never reached the target: PIT
                                        * channel 2 isn't counting --
@@ -257,13 +237,6 @@ static unsigned long measure_loop_rate_via_pit(void)
     _asm {
         mov al, port61_orig
         out 61h, al
-    }
-
-    {
-        char msg[96];
-        sprintf(msg, "pit: start=%u count=%u pass=%lu elapsed_ticks=%lu iters=%lu",
-                start_count, count, pass_count, elapsed_pit_ticks, iterations);
-        debug_log(msg);
     }
 
     if (elapsed_pit_ticks == 0UL)
@@ -278,25 +251,25 @@ static unsigned long measure_loop_rate_via_pit(void)
     if (elapsed_ms == 0UL)
         elapsed_ms = 1UL;
 
-    {
-        char msg[64];
-        unsigned long rate = (iterations / elapsed_ms) * 1000UL;
-        sprintf(msg, "pit: elapsed_ms=%lu rate=%lu iters/sec", elapsed_ms, rate);
-        debug_log(msg);
-        return rate;
-    }
+    return (iterations / elapsed_ms) * 1000UL;
 }
 
-/* Rough cycles-per-iteration estimate for the inner NOP-counting loop
- * above. Disassembling the compiled loop shows each iteration is NOP +
- * INC word ptr [mem] + CMP word ptr [mem],imm16 + JB (taken on all but
- * the last of every 256). Published 80386 timings put NOP at 3 clocks;
- * a memory-operand INC/CMP and a taken conditional jump each cost
- * several more on top of that. ~20 cycles/iteration is a reasoned
- * middle estimate from those figures, not a per-architecture-
- * calibrated one -- see the file header comment.
+/* Cycles-per-iteration estimate for the inner NOP-counting loop above.
+ * Originally a reasoned guess from published 80386 instruction timings
+ * (NOP + INC/CMP mem + taken Jcc summed to ~20 cycles) since no real
+ * pre-Pentium hardware was available to calibrate against -- see the
+ * file header comment. That guess was ~1.7x too high: real-hardware
+ * testing on a documented 486DX2-50 (vcctrl's rig) measured a loop
+ * rate of 4,256,000 iterations/sec, which a true 50 MHz chip only
+ * reaches at ~11.7 cycles/iteration, not 20 -- 486-era pipelining
+ * apparently makes this sequence cheaper per iteration than the
+ * 386-timing-based estimate assumed. 12 is that measurement rounded
+ * up slightly. Still a single real calibration point, not a
+ * per-architecture-verified constant -- if a different CPU generation
+ * turns out to need a different value, that's the next thing to
+ * revisit here.
  */
-#define EST_CYCLES_PER_ITERATION 20UL
+#define EST_CYCLES_PER_ITERATION 12UL
 
 static unsigned long estimate_mhz_from_loop_rate(unsigned long iterations_per_sec)
 {
