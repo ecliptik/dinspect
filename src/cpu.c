@@ -109,7 +109,20 @@ static int is_386_or_later(void)
     return 1; /* both cleared and set: 80386 or later */
 }
 
-#define PIT_CH2_TARGET_TICKS 20000UL /* ~16.76 ms at 1.193182 MHz */
+/* ~201 ms at 1.193182 MHz. Long enough that a single short interrupt
+ * or bus stall during the window is a small fraction of the total
+ * measured time instead of a large one -- real-hardware testing at
+ * the previous ~16.8ms window (20000 ticks) showed the same physical
+ * 486DX2 reporting 85, then 50, then 72 MHz across consecutive runs,
+ * i.e. real measurement noise, not just an inaccurate conversion
+ * constant. A ~12x longer window averages that kind of transient out
+ * far better. Safe to set this above one PIT wrap period (65536
+ * ticks, ~54.9ms) because elapsed ticks are now accumulated as
+ * per-pass deltas (see measure_loop_rate_via_pit()) rather than
+ * measured against a single fixed start_count, which only ever
+ * worked correctly for at most one wrap.
+ */
+#define PIT_CH2_TARGET_TICKS 240000UL
 
 /* Hard cap on the calibration loop below, matching the bounded-poll
  * discipline every other hardware probe in this project already
@@ -213,6 +226,7 @@ static unsigned long measure_loop_rate_via_pit(void)
 
     {
         unsigned long pass;
+        unsigned prev_count = start_count;
 
         for (pass = 0UL; pass < PIT_LOOP_MAX_PASSES; pass++) {
             for (inner = 0; inner < 256U; inner++) {
@@ -220,8 +234,19 @@ static unsigned long measure_loop_rate_via_pit(void)
             }
             iterations += 256UL;
 
+            /* Accumulate the delta since the last read, not against
+             * the original start_count -- a 16-bit down-counter delta
+             * can only ever represent up to one wrap (65536 ticks)
+             * correctly; measuring against a single fixed start_count
+             * silently breaks once the true elapsed time exceeds that,
+             * which a window this long can do. Per-pass deltas stay
+             * valid regardless of how many wraps the full window
+             * spans, as long as no single pass alone takes longer than
+             * one wrap period (~54.9ms) -- always true here.
+             */
             count = pit_read_channel2();
-            elapsed_pit_ticks = (unsigned long)(start_count - count);
+            elapsed_pit_ticks += (unsigned long)(unsigned)(prev_count - count);
+            prev_count = count;
             if (elapsed_pit_ticks >= PIT_CH2_TARGET_TICKS)
                 break;
         }
