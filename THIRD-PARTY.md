@@ -34,6 +34,20 @@ underlying BIOS/CPUID/hardware interfaces (themselves public,
 documented facts), not by copying doskutsu's code, specifically to
 keep dinspect fully CC0.
 
+## MS-DOS logo (src/output.c) — inspiration only, not a source
+
+The stacked "MS / DOS" badge logo's general composition (a checkered
+O, M read as two overlapping humps from its deep center notch, the
+overall proportions) was informed by looking at
+[EmgrtE/ascii-ansi's `ms-dos` piece](https://github.com/EmgrtE/ascii-ansi/blob/master/ms-dos/ms-dos)
+alongside the original MS-DOS badge artwork. That repository has no
+LICENSE file (confirmed via the GitHub API — `license: null`), so its
+specific character-by-character ASCII arrangement is not something
+dinspect has permission to copy, and none of it was transcribed here:
+dinspect's logo is an independently-authored bitmap font and layout,
+credited above purely because it shaped some of the design choices,
+not because any of its content was reused.
+
 ## Open Watcom (build-time tool only)
 
 dinspect is built with the Open Watcom C/C++ compiler

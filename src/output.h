@@ -17,11 +17,14 @@
  *             (label and value alike) instead of white-label/grey-value,
  *             and implies show_logo is ignored (no logo). Intended for
  *             OCR-friendly, monochrome capture.
+ * no_color  - draw the logo and fields with a single, uniform text
+ *             attribute instead of their normal colors, but (unlike
+ *             plain) still show the logo and its normal layout.
  * vendor    - selects which logo variant to draw (MS-DOS, FreeDOS, or a
  *             generic default for anything else), ignored if show_logo
  *             is false.
  */
 void render_screen(const field_t *fields, int count, int show_logo, int plain,
-                    dos_vendor_t vendor);
+                    int no_color, dos_vendor_t vendor);
 
 #endif

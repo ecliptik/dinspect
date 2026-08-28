@@ -45,6 +45,42 @@ static void debug_log(const char *msg)
     }
 }
 
+#define DIAG_MK_FP(seg, off) \
+    ((unsigned char _far *)(((unsigned long)(seg) << 16) | (unsigned)(off)))
+
+/* TEMPORARY: settles which video segment is actually live on the real
+ * hardware being tested (see git log) -- writes a distinguishable
+ * label into segment 0xB000 (row 0) and another into 0xB800 (row 1),
+ * logs the raw BIOS-data-area video mode byte, then exits immediately
+ * so the labels aren't overwritten by the normal render. Whichever
+ * label is visible on screen tells us which segment output.c should
+ * be targeting. To be removed once the real issue is found and fixed.
+ */
+static void video_probe_diagnostic(void)
+{
+    unsigned char _far *mode_byte = DIAG_MK_FP(0x0040, 0x0049);
+    unsigned char _far *b000 = DIAG_MK_FP(0xB000, 0);
+    unsigned char _far *b800 = DIAG_MK_FP(0xB800, 0);
+    static const char s_b000[] = "SEG-B000-LIVE";
+    static const char s_b800[] = "SEG-B800-LIVE";
+    char msg[64];
+    unsigned i;
+
+    sprintf(msg, "video diag: BDA mode byte (0040:0049) = %u", (unsigned)*mode_byte);
+    debug_log(msg);
+
+    for (i = 0; s_b000[i] != '\0'; i++) {
+        b000[i * 2]     = (unsigned char)s_b000[i];
+        b000[i * 2 + 1] = 0x0F;
+    }
+    for (i = 0; s_b800[i] != '\0'; i++) {
+        b800[(80 + i) * 2]     = (unsigned char)s_b800[i];
+        b800[(80 + i) * 2 + 1] = 0x0F;
+    }
+
+    debug_log("video diag: wrote test labels to B000 row0 and B800 row1, exiting now");
+}
+
 #define ADD_FIELD(label_str, getter_call) \
     do { \
         debug_log("starting field: " label_str); \
@@ -60,6 +96,7 @@ static void print_usage(void)
     printf("Usage: dinspect [options]\n\n");
     printf("  --no-logo          Do not draw the ASCII logo\n");
     printf("  --plain            Monochrome screen output, no logo (for OCR capture)\n");
+    printf("  --no-color         Disable color output; keeps the logo and layout\n");
     printf("  -o, --out FILE     Also write a plain-text report to FILE\n");
     printf("  --show-undetected  Include fields that couldn't be detected (UNKNOWN,\n");
     printf("                     not detected, etc.) instead of omitting them\n");
@@ -121,11 +158,17 @@ int main(int argc, char *argv[])
     int count = 0;
     int show_logo = 1;
     int plain = 0;
+    int no_color = 0;
     int show_undetected = 0;
     const char *out_path = NULL;
     int i;
 
     debug_log("main() started");
+
+    if (argc > 1 && stricmp(argv[1], "--video-diag") == 0) {
+        video_probe_diagnostic();
+        return 0;
+    }
 
     /* Before anything else touches a disk: silently Fail any critical
      * error (empty floppy, empty CD-ROM, etc.) instead of blocking on
@@ -140,6 +183,8 @@ int main(int argc, char *argv[])
         } else if (stricmp(argv[i], "--plain") == 0) {
             plain = 1;
             show_logo = 0;
+        } else if (stricmp(argv[i], "--no-color") == 0) {
+            no_color = 1;
         } else if (stricmp(argv[i], "--show-undetected") == 0) {
             show_undetected = 1;
         } else if (stricmp(argv[i], "-o") == 0 || stricmp(argv[i], "--out") == 0) {
@@ -185,7 +230,7 @@ int main(int argc, char *argv[])
         count = filter_undetected(fields, count);
 
     debug_log("starting render_screen");
-    render_screen(fields, count, show_logo, plain, get_dos_vendor());
+    render_screen(fields, count, show_logo, plain, no_color, get_dos_vendor());
     debug_log("finished render_screen");
 
     if (out_path != NULL) {
