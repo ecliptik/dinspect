@@ -23,17 +23,23 @@
  * CPUID feature bit says TSC is present (Pentium-class+) -- a real,
  * trustworthy MHz reading. Otherwise, a loop timed against PIT channel
  * 2 (the PC speaker channel, silently gated via port 0x61 bit 0, left
- * exactly as found afterward), converted to an *estimated* MHz figure
- * via a single cycles-per-iteration constant (see
- * EST_CYCLES_PER_ITERATION below) -- always labeled "~N MHz" (the
- * leading "~" marking it approximate) rather than presented as a
- * precise reading, since that constant is only calibrated against one
- * real data point so far (a 486DX2-50), not verified across CPU
- * generations. An earlier version of this code avoided the MHz unit
- * entirely for exactly this reason; the current approach trades a bit
- * of that caution for actually answering "how fast is this CPU" in
- * the units people expect, while keeping the "~" front and center
- * rather than burying the caveat in a comment only.
+ * exactly as found afterward), with interrupts disabled for just the
+ * timed portion so IRQ servicing can't steal wall-clock time the
+ * iteration counter has no way to see (real-hardware testing without
+ * this saw the same physical 486DX2 report wildly different MHz
+ * across consecutive runs and even across unrelated code changes
+ * elsewhere in the same file -- see measure_loop_rate_via_pit()),
+ * converted to an *estimated* MHz figure via a single
+ * cycles-per-iteration constant (see EST_CYCLES_PER_ITERATION below)
+ * -- always labeled "~N MHz" (the leading "~" marking it approximate)
+ * rather than presented as a precise reading, since that constant is
+ * only calibrated against one real data point so far (a 486DX2-50),
+ * not verified across CPU generations. An earlier version of this
+ * code avoided the MHz unit entirely for exactly this reason; the
+ * current approach trades a bit of that caution for actually
+ * answering "how fast is this CPU" in the units people expect, while
+ * keeping the "~" front and center rather than burying the caveat in
+ * a comment only.
  */
 
 #include <stdio.h>
@@ -127,20 +133,7 @@ static int is_386_or_later(void)
     return 1; /* both cleared and set: 80386 or later */
 }
 
-/* ~201 ms at 1.193182 MHz. Long enough that a single short interrupt
- * or bus stall during the window is a small fraction of the total
- * measured time instead of a large one -- real-hardware testing at
- * the previous ~16.8ms window (20000 ticks) showed the same physical
- * 486DX2 reporting 85, then 50, then 72 MHz across consecutive runs,
- * i.e. real measurement noise, not just an inaccurate conversion
- * constant. A ~12x longer window averages that kind of transient out
- * far better. Safe to set this above one PIT wrap period (65536
- * ticks, ~54.9ms) because elapsed ticks are now accumulated as
- * per-pass deltas (see measure_loop_rate_via_pit()) rather than
- * measured against a single fixed start_count, which only ever
- * worked correctly for at most one wrap.
- */
-#define PIT_CH2_TARGET_TICKS 240000UL
+#define PIT_CH2_TARGET_TICKS 30000UL /* ~25.14 ms at 1.193182 MHz */
 
 /* Hard cap on the calibration loop below, matching the bounded-poll
  * discipline every other hardware probe in this project already
@@ -238,6 +231,24 @@ static unsigned long measure_loop_rate_via_pit(void)
         out 61h, al
     }
 
+    /* CLI for the timed portion only: an IRQ landing mid-loop steals
+     * real wall-clock time that "iterations" has no way to see, and
+     * exactly how much depends on unrelated things like where in the
+     * loop the interrupt happens to land -- which code layout (e.g.
+     * an unrelated function elsewhere in the same file growing or
+     * shrinking) can shift. That's what was actually producing the
+     * wild run-to-run/build-to-build swings (605, 85, 50, 72, 10, 2
+     * MHz across successive real-hardware tests on the same physical
+     * chip) -- not the window length, and not the accumulation math,
+     * both of which were red herrings chased before landing on this.
+     * PIT channel 2 itself keeps counting in hardware regardless of
+     * CLI, so this doesn't affect what's being measured, only removes
+     * the CPU's own interrupt-driven jitter from the measurement.
+     * Re-enabled immediately after the loop, before any DOS/BIOS call
+     * (debug logging, if any, always happens outside this section).
+     */
+    _asm { cli }
+
     start_count = pit_read_channel2();
     iterations = 0UL;
     elapsed_pit_ticks = 0UL;
@@ -256,11 +267,11 @@ static unsigned long measure_loop_rate_via_pit(void)
              * the original start_count -- a 16-bit down-counter delta
              * can only ever represent up to one wrap (65536 ticks)
              * correctly; measuring against a single fixed start_count
-             * silently breaks once the true elapsed time exceeds that,
-             * which a window this long can do. Per-pass deltas stay
-             * valid regardless of how many wraps the full window
-             * spans, as long as no single pass alone takes longer than
-             * one wrap period (~54.9ms) -- always true here.
+             * silently breaks once the true elapsed time exceeds that.
+             * Per-pass deltas stay valid regardless of how many wraps
+             * the full window spans, as long as no single pass alone
+             * takes longer than one wrap period (~54.9ms) -- always
+             * true here.
              */
             count = pit_read_channel2();
             elapsed_pit_ticks += (unsigned long)(unsigned)(prev_count - count);
@@ -277,6 +288,8 @@ static unsigned long measure_loop_rate_via_pit(void)
                                        * report UNKNOWN, not a bogus
                                        * rate, and don't spin forever */
     }
+
+    _asm { sti }
 
     /* Restore the gate bit exactly as we found it. */
     _asm {
