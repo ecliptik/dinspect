@@ -20,9 +20,9 @@
  */
 void get_blaster_env(char *buf, size_t buflen);
 
-/* Formats "OPL2/3 detected" or "not detected" into buf, via the classic
- * AdLib timer status test on port 0x388. A single fixed-length
- * sequence, not a wait loop -- always completes quickly.
+/* Formats "OPL2/3" or "not detected" into buf, via the classic AdLib
+ * timer status test on port 0x388. A single fixed-length sequence,
+ * not a wait loop -- always completes quickly.
  */
 void get_opl_status(char *buf, size_t buflen);
 
@@ -36,7 +36,7 @@ void get_opl_status(char *buf, size_t buflen);
  */
 void get_sb_dsp_version(char *buf, size_t buflen);
 
-/* Formats "detected" or "not detected" for an MPU-401 UART at the
+/* Formats "YES" or "not detected" for an MPU-401 UART at the
  * standard port 0x330 (bounded polling; never hangs).
  */
 void get_mpu401_status(char *buf, size_t buflen);

@@ -176,7 +176,7 @@ void get_opl_status(char *buf, size_t buflen)
     }
 
     if ((status1 & 0xE0u) == 0x00u && (status2 & 0xE0u) == 0xC0u)
-        strncpy(buf, "OPL2/3 detected", buflen - 1);
+        strncpy(buf, "OPL2/3", buflen - 1);
     else
         strncpy(buf, "not detected", buflen - 1);
     buf[buflen - 1] = '\0';
@@ -311,7 +311,7 @@ void get_mpu401_status(char *buf, size_t buflen)
     }
 
     if (val == 0xFEu) {
-        strncpy(buf, "detected", buflen - 1);
+        strncpy(buf, "YES", buflen - 1);
         buf[buflen - 1] = '\0';
         return;
     }
