@@ -64,6 +64,7 @@ dinspect [options]
 
   --no-logo          Do not draw the ASCII logo
   --plain            Monochrome screen output, no logo (for OCR capture)
+  --no-color         Disable color output; keeps the logo and layout
   -o, --out FILE     Also write a plain-text report to FILE
   --show-undetected  Include fields that couldn't be detected (UNKNOWN,
                      not detected, etc.) instead of omitting them
