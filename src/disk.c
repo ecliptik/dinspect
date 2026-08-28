@@ -10,6 +10,21 @@
 #include <stdio.h>
 #include "disk.h"
 
+/* TEMPORARY diagnostic instrumentation for the real-hardware hang
+ * investigation -- see the matching comment in main.c. Duplicated
+ * rather than shared via a header since this is transient debugging
+ * code, to be removed once the real hang is found and fixed.
+ */
+static void debug_log(const char *msg)
+{
+    FILE *fp = fopen("DFDEBUG.LOG", "a");
+
+    if (fp != NULL) {
+        fprintf(fp, "%s\n", msg);
+        fclose(fp);
+    }
+}
+
 unsigned get_floppy_drive_count(void)
 {
     unsigned equip;
@@ -96,6 +111,12 @@ void add_disk_fields(field_t *fields, int *count, int max_fields)
          */
         sprintf(disk_labels[label_idx], "Disk %c", letter);
         fields[*count].label = disk_labels[label_idx];
+
+        {
+            char msg[32];
+            sprintf(msg, "probing drive %c:", letter);
+            debug_log(msg);
+        }
 
         if (!get_disk_usage(fields[*count].value, sizeof(fields[*count].value), drive_num))
             break; /* first missing drive number = end of configured drives */

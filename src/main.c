@@ -24,10 +24,33 @@
 #include "sysinfo.h"
 #include "video.h"
 
+/* TEMPORARY diagnostic instrumentation for the real-hardware hang
+ * investigation (see git log) -- logs which field is about to be
+ * collected to DFDEBUG.LOG, so a hung run shows exactly where
+ * execution got stuck instead of the "zero output ever" symptom every
+ * hang looks like on screen (render_screen() only runs once, after
+ * every field finishes). Opens, writes, and closes the file for each
+ * line rather than keeping a handle open across the run, so the entry
+ * is durable on disk even if the program hangs immediately afterward
+ * and never reaches a clean exit. To be removed once the real hang is
+ * found and fixed.
+ */
+static void debug_log(const char *msg)
+{
+    FILE *fp = fopen("DFDEBUG.LOG", "a");
+
+    if (fp != NULL) {
+        fprintf(fp, "%s\n", msg);
+        fclose(fp);
+    }
+}
+
 #define ADD_FIELD(label_str, getter_call) \
     do { \
+        debug_log("starting field: " label_str); \
         fields[count].label = (label_str); \
         getter_call; \
+        debug_log("finished field: " label_str); \
         count++; \
     } while (0)
 
@@ -102,11 +125,14 @@ int main(int argc, char *argv[])
     const char *out_path = NULL;
     int i;
 
+    debug_log("main() started");
+
     /* Before anything else touches a disk: silently Fail any critical
      * error (empty floppy, empty CD-ROM, etc.) instead of blocking on
      * DOS's "Abort, Retry, Fail?" prompt. See critical_error.h.
      */
     install_silent_critical_handler();
+    debug_log("critical handler installed");
 
     for (i = 1; i < argc; i++) {
         if (stricmp(argv[i], "--no-logo") == 0) {
@@ -150,12 +176,17 @@ int main(int argc, char *argv[])
     ADD_FIELD("Network Packet Driver", get_packet_driver_info(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Network IP Config", get_network_ip_info(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Floppy drives", get_floppy_count(fields[count].value, sizeof(fields[count].value)));
+
+    debug_log("starting add_disk_fields");
     add_disk_fields(fields, &count, MAX_FIELDS);
+    debug_log("finished add_disk_fields");
 
     if (!show_undetected)
         count = filter_undetected(fields, count);
 
+    debug_log("starting render_screen");
     render_screen(fields, count, show_logo, plain, get_dos_vendor());
+    debug_log("finished render_screen");
 
     if (out_path != NULL) {
         if (write_fields_file(fields, count, out_path) != 0) {

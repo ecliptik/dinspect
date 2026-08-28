@@ -43,6 +43,21 @@
 #include "cpu386.h"
 #include "sysinfo.h"
 
+/* TEMPORARY diagnostic instrumentation for the real-hardware hang
+ * investigation -- see the matching comment in main.c. Duplicated
+ * rather than shared via a header since this is transient debugging
+ * code, to be removed once the real hang is found and fixed.
+ */
+static void debug_log(const char *msg)
+{
+    FILE *fp = fopen("DFDEBUG.LOG", "a");
+
+    if (fp != NULL) {
+        fprintf(fp, "%s\n", msg);
+        fclose(fp);
+    }
+}
+
 typedef struct {
     int probed;
     int has_cpuid;
@@ -345,41 +360,54 @@ static void ensure_probed(void)
         return;
     g_probe.probed = 1;
 
+    debug_log("cpu: checking is_386_or_later");
     if (!is_386_or_later()) {
         g_probe.has_cpuid = 0;
         g_probe.has_tsc = 0;
         g_probe.class_desc = "8086/80286-class (pre-386)";
-    } else if (!is_486_or_later()) {
-        g_probe.has_cpuid = 0;
-        g_probe.has_tsc = 0;
-        g_probe.class_desc = "80386";
-    } else if (!has_cpuid()) {
-        g_probe.has_cpuid = 0;
-        g_probe.has_tsc = 0;
-        g_probe.class_desc = "80486 (no CPUID)";
     } else {
-        unsigned long a, b, c, d;
+        debug_log("cpu: checking is_486_or_later");
+        if (!is_486_or_later()) {
+            g_probe.has_cpuid = 0;
+            g_probe.has_tsc = 0;
+            g_probe.class_desc = "80386";
+        } else {
+            debug_log("cpu: checking has_cpuid");
+            if (!has_cpuid()) {
+                g_probe.has_cpuid = 0;
+                g_probe.has_tsc = 0;
+                g_probe.class_desc = "80486 (no CPUID)";
+            } else {
+                unsigned long a, b, c, d;
 
-        g_probe.has_cpuid = 1;
+                debug_log("cpu: cpuid available, querying leaves");
+                g_probe.has_cpuid = 1;
 
-        cpuid_call(0UL, &a, &b, &c, &d);
-        memcpy(g_probe.vendor, &b, 4);
-        memcpy(g_probe.vendor + 4, &d, 4);
-        memcpy(g_probe.vendor + 8, &c, 4);
-        g_probe.vendor[12] = '\0';
+                cpuid_call(0UL, &a, &b, &c, &d);
+                memcpy(g_probe.vendor, &b, 4);
+                memcpy(g_probe.vendor + 4, &d, 4);
+                memcpy(g_probe.vendor + 8, &c, 4);
+                g_probe.vendor[12] = '\0';
 
-        cpuid_call(1UL, &a, &b, &c, &d);
-        g_probe.stepping = (unsigned)(a & 0xFUL);
-        g_probe.model    = (unsigned)((a >> 4) & 0xFUL);
-        g_probe.family   = (unsigned)((a >> 8) & 0xFUL);
-        g_probe.edx_features = d;
-        g_probe.has_tsc = (d & 0x10UL) != 0UL;
+                cpuid_call(1UL, &a, &b, &c, &d);
+                g_probe.stepping = (unsigned)(a & 0xFUL);
+                g_probe.model    = (unsigned)((a >> 4) & 0xFUL);
+                g_probe.family   = (unsigned)((a >> 8) & 0xFUL);
+                g_probe.edx_features = d;
+                g_probe.has_tsc = (d & 0x10UL) != 0UL;
+            }
+        }
     }
+    debug_log("cpu: class/cpuid detection done");
 
-    if (g_probe.has_tsc)
+    if (g_probe.has_tsc) {
+        debug_log("cpu: measuring speed via RDTSC");
         g_probe.speed_value = measure_mhz_via_tsc();
-    else
+    } else {
+        debug_log("cpu: measuring speed via PIT loop (measure_loop_rate_via_pit)");
         g_probe.speed_value = estimate_mhz_from_loop_rate(measure_loop_rate_via_pit());
+        debug_log("cpu: PIT loop returned");
+    }
 }
 
 void get_fpu_status(char *buf, size_t buflen)
