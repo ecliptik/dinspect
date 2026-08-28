@@ -1,10 +1,18 @@
 /* output.c - text-mode screen rendering
  *
- * Writes characters directly into video memory (segment 0xB000 for
- * monochrome adapters, 0xB800 otherwise, per the BIOS data area video mode
- * byte at 0040:0049) rather than going through stdio or the BIOS teletype
- * call, since teletype output does not honor a foreground color in text
- * modes.
+ * Draws through INT 10h AH=09h (Write Character and Attribute at
+ * Cursor Position) rather than either stdio/BIOS teletype (AH=0Eh,
+ * which ignores the foreground color attribute) or a direct poke into
+ * the text-mode video segment (0xB000/0xB800), which this project
+ * used originally but which is meaningless when the adapter is
+ * actually in a graphics mode -- confirmed on real hardware that runs
+ * permanently in BIOS mode 12h (640x480 16-color graphics), where the
+ * framebuffer lives at segment 0xA000 with planar addressing instead.
+ * AH=09h is documented to draw correctly, in the requested color, in
+ * every BIOS-supported video mode (text or graphics), since the BIOS
+ * itself handles the mode-appropriate plotting -- so this works
+ * whether the caller is sitting in text mode 3 or graphics mode 12h,
+ * without this code needing to know or care which.
  */
 
 #include <stdio.h>
@@ -29,45 +37,6 @@
 #define ATTR_BLUE          1
 #define ATTR_NORMAL        7
 
-#define VIDEO_MK_FP(seg, off) \
-    ((unsigned char _far *)(((unsigned long)(seg) << 16) | (unsigned)(off)))
-
-static unsigned video_segment(void)
-{
-    unsigned char _far *mode_byte = VIDEO_MK_FP(0x0040, 0x0049);
-    return (*mode_byte == 7) ? 0xB000u : 0xB800u;
-}
-
-static void term_clear(unsigned char attr)
-{
-    unsigned char _far *vram = VIDEO_MK_FP(video_segment(), 0);
-    unsigned i;
-
-    for (i = 0; i < (unsigned)(SCREEN_COLS * SCREEN_ROWS); i++) {
-        vram[i * 2]     = ' ';
-        vram[i * 2 + 1] = attr;
-    }
-}
-
-static void term_puts(int col, int row, const char *s, unsigned char attr)
-{
-    unsigned char _far *vram = VIDEO_MK_FP(video_segment(), 0);
-    unsigned offset = (unsigned)(row * SCREEN_COLS + col) * 2;
-    int cur_col = col;
-
-    /* Clip at the screen edge -- without this, a value longer than the
-     * remaining columns spills into the next row's video memory instead
-     * of just getting cut off.
-     */
-    while (*s != '\0' && cur_col < SCREEN_COLS) {
-        vram[offset]     = (unsigned char)*s;
-        vram[offset + 1] = attr;
-        offset += 2;
-        s++;
-        cur_col++;
-    }
-}
-
 static void term_set_cursor(int col, int row)
 {
     _asm {
@@ -76,6 +45,57 @@ static void term_set_cursor(int col, int row)
         mov dh, byte ptr row
         mov dl, byte ptr col
         int 10h
+    }
+}
+
+/* Writes one character, count times, at the CURRENT cursor position
+ * with the given attribute -- unlike teletype, this does not move the
+ * cursor itself, so every caller here repositions it first via
+ * term_set_cursor().
+ */
+/* Parameter named "out_ch", not "ch" -- CH is an x86 register name,
+ * and Watcom's inline assembler resolves a bare identifier that
+ * matches a register name to the register, not the C variable, same
+ * class of bug as the earlier seg/off vs SEG/OFFSET collision
+ * elsewhere in this project. "mov al, ch" would silently compile
+ * against the CH *register* (whatever garbage happened to be in it)
+ * instead of this parameter.
+ */
+static void term_write_char(unsigned char out_ch, unsigned char attr, unsigned count)
+{
+    _asm {
+        mov ah, 09h
+        mov al, out_ch
+        mov bh, 0
+        mov bl, attr
+        mov cx, count
+        int 10h
+    }
+}
+
+static void term_clear(unsigned char attr)
+{
+    unsigned row;
+
+    for (row = 0; row < SCREEN_ROWS; row++) {
+        term_set_cursor(0, row);
+        term_write_char(' ', attr, SCREEN_COLS);
+    }
+}
+
+static void term_puts(int col, int row, const char *s, unsigned char attr)
+{
+    int cur_col = col;
+
+    /* Clip at the screen edge -- without this, a value longer than the
+     * remaining columns would wrap onto the next row instead of just
+     * getting cut off.
+     */
+    while (*s != '\0' && cur_col < SCREEN_COLS) {
+        term_set_cursor(cur_col, row);
+        term_write_char((unsigned char)*s, attr, 1);
+        s++;
+        cur_col++;
     }
 }
 
