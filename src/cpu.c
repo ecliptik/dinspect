@@ -110,6 +110,34 @@ static int is_386_or_later(void)
 
 #define PIT_CH2_TARGET_TICKS 20000UL /* ~16.76 ms at 1.193182 MHz */
 
+/* Hard cap on the calibration loop below, matching the bounded-poll
+ * discipline every other hardware probe in this project already
+ * follows (sound.c's SOUND_POLL_MAX, etc.) -- this one didn't have
+ * one, and a real machine hung indefinitely in it (PIT channel 2
+ * never advancing, likely from the missing I/O delay io_delay() now
+ * adds). Even a genuinely slow 8086 clears the real target in a
+ * handful of passes; this exists purely so a non-functional PIT
+ * channel can't hang forever regardless of the reason.
+ */
+#define PIT_LOOP_MAX_PASSES 1000000UL
+
+/* A bare `out 80h, al` (the value doesn't matter -- port 0x80 is the
+ * conventional POST-diagnostic scratch port, wired but otherwise
+ * unused, kept around across the PC-compatible ecosystem specifically
+ * for this purpose) costs one bus cycle and nothing else. Real 8253/
+ * 8254 PIT silicon can need a beat between consecutive command/data
+ * writes to latch correctly; DOSBox-X's PIT emulation doesn't model
+ * that timing hazard, so this only ever showed up on real hardware --
+ * a 486DX2-50 can issue back-to-back OUTs faster than real PIT logic
+ * keeps up with, in a way no dosfetch/dinspect testing here could see.
+ */
+static void io_delay(void)
+{
+    _asm {
+        out 80h, al
+    }
+}
+
 static unsigned pit_read_channel2(void)
 {
     unsigned char lo, hi;
@@ -117,8 +145,14 @@ static unsigned pit_read_channel2(void)
     _asm {
         mov al, 80h  ; latch command, channel 2
         out 43h, al
+    }
+    io_delay();
+    _asm {
         in al, 42h
         mov lo, al
+    }
+    io_delay();
+    _asm {
         in al, 42h
         mov hi, al
     }
@@ -143,14 +177,24 @@ static unsigned long measure_loop_rate_via_pit(void)
 
     /* Program channel 2: mode 2 (rate generator), LSB/MSB, binary,
      * reload 0 (== 65536), a free-running down-counter we only read.
+     * io_delay() between each write: see its comment above pit_read_
+     * channel2() -- real PIT silicon needs a beat between these that
+     * fast real hardware can outrun without it.
      */
     _asm {
         mov al, 0B4h
         out 43h, al
+    }
+    io_delay();
+    _asm {
         mov al, 0
         out 42h, al
+    }
+    io_delay();
+    _asm {
         out 42h, al
     }
+    io_delay();
 
     /* Enable the gate (bit 0) so the counter runs; leave every other
      * bit (including the speaker-data bit) exactly as found, so this
@@ -166,16 +210,26 @@ static unsigned long measure_loop_rate_via_pit(void)
     iterations = 0UL;
     elapsed_pit_ticks = 0UL;
 
-    for (;;) {
-        for (inner = 0; inner < 256U; inner++) {
-            _asm nop
-        }
-        iterations += 256UL;
+    {
+        unsigned long pass;
 
-        count = pit_read_channel2();
-        elapsed_pit_ticks = (unsigned long)(start_count - count);
-        if (elapsed_pit_ticks >= PIT_CH2_TARGET_TICKS)
-            break;
+        for (pass = 0UL; pass < PIT_LOOP_MAX_PASSES; pass++) {
+            for (inner = 0; inner < 256U; inner++) {
+                _asm nop
+            }
+            iterations += 256UL;
+
+            count = pit_read_channel2();
+            elapsed_pit_ticks = (unsigned long)(start_count - count);
+            if (elapsed_pit_ticks >= PIT_CH2_TARGET_TICKS)
+                break;
+        }
+
+        if (pass >= PIT_LOOP_MAX_PASSES)
+            elapsed_pit_ticks = 0UL; /* never reached the target: PIT
+                                       * channel 2 isn't counting --
+                                       * report UNKNOWN, not a bogus
+                                       * rate, and don't spin forever */
     }
 
     /* Restore the gate bit exactly as we found it. */
