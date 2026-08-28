@@ -42,6 +42,24 @@
 #include "cpu386.h"
 #include "sysinfo.h"
 
+/* TEMPORARY diagnostic instrumentation for the CPU-speed-estimate
+ * "rock-solid but wrong" bug (widening the PIT measurement window to
+ * ~201ms made the reading deterministic and repeatable, but ~5x too
+ * low on real hardware) -- logs the raw intermediate values from
+ * measure_loop_rate_via_pit() so the actual mechanism can be pinned
+ * down from a real run instead of guessed at further. To be removed
+ * once the real cause is found and fixed.
+ */
+static void debug_log(const char *msg)
+{
+    FILE *fp = fopen("DFDEBUG.LOG", "a");
+
+    if (fp != NULL) {
+        fprintf(fp, "%s\n", msg);
+        fclose(fp);
+    }
+}
+
 typedef struct {
     int probed;
     int has_cpuid;
@@ -181,7 +199,7 @@ static unsigned long measure_loop_rate_via_pit(void)
 {
     unsigned char port61_orig;
     unsigned start_count, count;
-    unsigned long elapsed_pit_ticks, elapsed_ms, iterations;
+    unsigned long elapsed_pit_ticks, elapsed_ms, iterations, pass_count;
     unsigned inner;
 
     _asm {
@@ -251,6 +269,8 @@ static unsigned long measure_loop_rate_via_pit(void)
                 break;
         }
 
+        pass_count = pass;
+
         if (pass >= PIT_LOOP_MAX_PASSES)
             elapsed_pit_ticks = 0UL; /* never reached the target: PIT
                                        * channel 2 isn't counting --
@@ -262,6 +282,13 @@ static unsigned long measure_loop_rate_via_pit(void)
     _asm {
         mov al, port61_orig
         out 61h, al
+    }
+
+    {
+        char msg[96];
+        sprintf(msg, "pit2: start=%u last=%u pass=%lu elapsed_ticks=%lu iters=%lu",
+                start_count, count, pass_count, elapsed_pit_ticks, iterations);
+        debug_log(msg);
     }
 
     if (elapsed_pit_ticks == 0UL)
@@ -276,7 +303,13 @@ static unsigned long measure_loop_rate_via_pit(void)
     if (elapsed_ms == 0UL)
         elapsed_ms = 1UL;
 
-    return (iterations / elapsed_ms) * 1000UL;
+    {
+        char msg[64];
+        unsigned long rate = (iterations / elapsed_ms) * 1000UL;
+        sprintf(msg, "pit2: elapsed_ms=%lu rate=%lu iters/sec", elapsed_ms, rate);
+        debug_log(msg);
+        return rate;
+    }
 }
 
 /* Cycles-per-iteration estimate for the inner NOP-counting loop above.
