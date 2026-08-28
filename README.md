@@ -17,12 +17,9 @@ configurations.
 ## Features
 
 - **System**: DOS vendor/version, shell (`COMSPEC`)
-- **CPU**: staged detection safe on any 8086+ (never executes an
-  instruction the CPU doesn't support) — vendor string, family/model/
-  stepping and feature flags via CPUID where available, clock speed
-  via the time-stamp counter on Pentium-class+ hardware, or a rough
-  relative loop-throughput figure (explicitly labeled as such, never
-  presented as a fake-precision MHz reading) on earlier CPUs
+- **CPU**: vendor, family/model/stepping, and feature flags via
+  CPUID where available; clock speed via TSC on Pentium-class+, or a
+  labeled loop-throughput estimate on earlier CPUs
 - **Memory**: base (conventional) and extended memory
 - **Disks**: floppy drive count, and free/total space for every
   hard-disk-class drive letter from C: onward
