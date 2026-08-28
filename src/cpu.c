@@ -236,16 +236,19 @@ static unsigned long measure_loop_rate_via_pit(void)
      * exactly how much depends on unrelated things like where in the
      * loop the interrupt happens to land -- which code layout (e.g.
      * an unrelated function elsewhere in the same file growing or
-     * shrinking) can shift. That's what was actually producing the
-     * wild run-to-run/build-to-build swings (605, 85, 50, 72, 10, 2
-     * MHz across successive real-hardware tests on the same physical
-     * chip) -- not the window length, and not the accumulation math,
-     * both of which were red herrings chased before landing on this.
-     * PIT channel 2 itself keeps counting in hardware regardless of
-     * CLI, so this doesn't affect what's being measured, only removes
-     * the CPU's own interrupt-driven jitter from the measurement.
-     * Re-enabled immediately after the loop, before any DOS/BIOS call
-     * (debug logging, if any, always happens outside this section).
+     * shrinking) can shift. Real-hardware testing confirmed this was
+     * one real source of the run-to-run swings seen while developing
+     * this function (605, 85, 50, 72 MHz across early tests): with
+     * CLI/STI added, repeated runs on the same physical chip became
+     * bit-for-bit identical. A second, separate bug (a per-pass
+     * accumulated-delta rewrite, since reverted -- see the comment
+     * below) was responsible for the reading also being wrong by a
+     * consistent ~20x once the noise was gone; CLI/STI didn't cause
+     * or fix that one. PIT channel 2 itself keeps counting in
+     * hardware regardless of CLI, so this doesn't affect what's being
+     * measured, only removes the CPU's own interrupt-driven jitter
+     * from the measurement. Re-enabled immediately after the loop,
+     * before any DOS/BIOS call.
      */
     _asm { cli }
 
@@ -255,27 +258,29 @@ static unsigned long measure_loop_rate_via_pit(void)
 
     {
         unsigned long pass;
-        unsigned prev_count = start_count;
 
+        /* Measured against the single fixed start_count, not a
+         * per-pass accumulated delta -- a per-pass-delta rewrite was
+         * tried (to correctly span more than one PIT wrap) and real-
+         * hardware testing showed it reporting ~20x too few effective
+         * iterations per PIT tick, consistently and reproducibly,
+         * without a mechanism either the accumulation math (re-
+         * verified by hand and telescopes correctly) or CLI/STI
+         * (which independently fixed measurement noise but not this)
+         * could explain. This form has empirically matched real
+         * 486DX2-50 hardware. Its real limitation -- only correct for
+         * at most one wrap (65536 ticks, ~54.9ms) -- doesn't apply at
+         * PIT_CH2_TARGET_TICKS's current short window, so it's not a
+         * real cost here.
+         */
         for (pass = 0UL; pass < PIT_LOOP_MAX_PASSES; pass++) {
             for (inner = 0; inner < 256U; inner++) {
                 _asm nop
             }
             iterations += 256UL;
 
-            /* Accumulate the delta since the last read, not against
-             * the original start_count -- a 16-bit down-counter delta
-             * can only ever represent up to one wrap (65536 ticks)
-             * correctly; measuring against a single fixed start_count
-             * silently breaks once the true elapsed time exceeds that.
-             * Per-pass deltas stay valid regardless of how many wraps
-             * the full window spans, as long as no single pass alone
-             * takes longer than one wrap period (~54.9ms) -- always
-             * true here.
-             */
             count = pit_read_channel2();
-            elapsed_pit_ticks += (unsigned long)(unsigned)(prev_count - count);
-            prev_count = count;
+            elapsed_pit_ticks = (unsigned long)(start_count - count);
             if (elapsed_pit_ticks >= PIT_CH2_TARGET_TICKS)
                 break;
         }
