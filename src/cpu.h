@@ -47,4 +47,14 @@ void get_cpu_features(char *buf, size_t buflen);
  */
 void get_cpu_speed(char *buf, size_t buflen);
 
+/* Formats L1/L2 cache size into buf:
+ *   "<n> KB"  - detected (AMD via extended CPUID leaves 0x80000005/6,
+ *               Intel via CPUID leaf 2 descriptor bytes -- see cpu.c).
+ *   "none"    - detected and confirmed absent (e.g. no L2 cache).
+ *   "UNKNOWN" - CPUID unavailable, a non-Intel/AMD vendor, or no
+ *               recognized descriptor for this specific CPU.
+ */
+void get_cpu_l1_cache(char *buf, size_t buflen);
+void get_cpu_l2_cache(char *buf, size_t buflen);
+
 #endif

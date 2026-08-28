@@ -68,6 +68,8 @@ typedef struct {
     unsigned long speed_value; /* MHz always -- real (RDTSC) if has_tsc,
                                  * else an estimate; see get_cpu_speed() */
     const char *class_desc;
+    int l1_known, l2_known;    /* whether cache size was determinable at all */
+    unsigned long l1_kb, l2_kb; /* 0 with *_known set means "no such cache" */
 } cpu_probe_t;
 
 static cpu_probe_t g_probe;
@@ -354,6 +356,111 @@ static const char *short_vendor(const char *vendor)
     return vendor;
 }
 
+/* AMD publishes L1/L2 cache sizes directly as bitfields in extended
+ * CPUID leaves (K5/K6/Athlon-era, and later) -- no descriptor table
+ * needed. Leaf 0x80000000 first reports the highest extended leaf this
+ * CPU supports; querying a leaf beyond that returns undefined data on
+ * some CPUs, so each leaf is gated on that count before use.
+ */
+static void detect_cache_amd(void)
+{
+    unsigned long a, b, c, d, max_ext;
+
+    cpuid_call(0x80000000UL, &a, &b, &c, &d);
+    max_ext = a;
+
+    if (max_ext >= 0x80000005UL) {
+        /* ECX bits 31-24: L1 data cache size in KB. */
+        cpuid_call(0x80000005UL, &a, &b, &c, &d);
+        g_probe.l1_kb = (c >> 24) & 0xFFUL;
+        g_probe.l1_known = 1;
+    }
+
+    if (max_ext >= 0x80000006UL) {
+        /* ECX bits 31-16: L2 cache size in KB. */
+        cpuid_call(0x80000006UL, &a, &b, &c, &d);
+        g_probe.l2_kb = (c >> 16) & 0xFFFFUL;
+        g_probe.l2_known = 1;
+    }
+}
+
+typedef struct {
+    unsigned char code;
+    int is_l1;   /* 1 = L1 (instruction or data), 0 = L2/L3 unified */
+    unsigned kb; /* 0 alongside is_l1==0 means "no L2/L3 cache" (0x40) */
+} cache_desc_t;
+
+/* Intel CPUID leaf 2 reports cache/TLB info as one-byte "descriptors"
+ * scattered across EAX/EBX/ECX/EDX, each looked up in a vendor-defined
+ * table. This covers the common 486/Pentium/Pentium Pro/Pentium
+ * II-era descriptors -- the hardware this project actually targets --
+ * not Intel's full modern table (which has grown to include decades
+ * of later descriptors irrelevant here); an unrecognized byte is
+ * silently skipped rather than guessed at.
+ */
+static const cache_desc_t INTEL_CACHE_DESCRIPTORS[] = {
+    { 0x06, 1,    8 }, { 0x08, 1,   16 }, { 0x0A, 1,    8 }, { 0x0C, 1,   16 },
+    { 0x0D, 1,   16 }, { 0x60, 1,   16 }, { 0x66, 1,    8 }, { 0x67, 1,   16 },
+    { 0x68, 1,   32 },
+    { 0x40, 0,    0 }, { 0x41, 0,  128 }, { 0x42, 0,  256 }, { 0x43, 0,  512 },
+    { 0x44, 0, 1024 }, { 0x45, 0, 2048 }, { 0x78, 0, 1024 }, { 0x79, 0,  128 },
+    { 0x7A, 0,  256 }, { 0x7B, 0,  512 }, { 0x7C, 0, 1024 }, { 0x7D, 0, 2048 },
+    { 0x7F, 0,  512 }, { 0x82, 0,  256 }, { 0x83, 0,  512 }, { 0x84, 0, 1024 },
+    { 0x85, 0, 2048 }, { 0x86, 0,  512 }, { 0x87, 0, 1024 },
+};
+#define INTEL_CACHE_DESCRIPTOR_COUNT \
+    (sizeof(INTEL_CACHE_DESCRIPTORS) / sizeof(INTEL_CACHE_DESCRIPTORS[0]))
+
+static void accumulate_intel_descriptor(unsigned char code)
+{
+    size_t i;
+
+    if (code == 0x00 || code == 0xFFU)
+        return; /* padding, or "see leaf 4 instead" marker */
+
+    for (i = 0; i < INTEL_CACHE_DESCRIPTOR_COUNT; i++) {
+        if (INTEL_CACHE_DESCRIPTORS[i].code != code)
+            continue;
+        if (INTEL_CACHE_DESCRIPTORS[i].is_l1) {
+            g_probe.l1_kb += INTEL_CACHE_DESCRIPTORS[i].kb;
+            g_probe.l1_known = 1;
+        } else {
+            g_probe.l2_kb += INTEL_CACHE_DESCRIPTORS[i].kb;
+            g_probe.l2_known = 1;
+        }
+        return;
+    }
+}
+
+static void detect_cache_intel(void)
+{
+    unsigned long a, b, c, d;
+    unsigned char bytes[16];
+    int i;
+
+    cpuid_call(2UL, &a, &b, &c, &d);
+
+    memcpy(bytes,      &a, 4);
+    memcpy(bytes + 4,  &b, 4);
+    memcpy(bytes + 8,  &c, 4);
+    memcpy(bytes + 12, &d, 4);
+
+    for (i = 0; i < 16; i++) {
+        /* Byte 0 of EAX is an iteration count (always 1 on the CPUs
+         * this table covers), not a descriptor -- skip it. A register
+         * with its top bit set holds no valid descriptor bytes at all.
+         */
+        if (i == 0)
+            continue;
+        if ((i < 4  && (a & 0x80000000UL)) ||
+            (i >= 4 && i < 8  && (b & 0x80000000UL)) ||
+            (i >= 8 && i < 12 && (c & 0x80000000UL)) ||
+            (i >= 12          && (d & 0x80000000UL)))
+            continue;
+        accumulate_intel_descriptor(bytes[i]);
+    }
+}
+
 static void ensure_probed(void)
 {
     if (g_probe.probed)
@@ -395,6 +502,12 @@ static void ensure_probed(void)
                 g_probe.family   = (unsigned)((a >> 8) & 0xFUL);
                 g_probe.edx_features = d;
                 g_probe.has_tsc = (d & 0x10UL) != 0UL;
+
+                debug_log("cpu: querying cache size");
+                if (strncmp(g_probe.vendor, "AuthenticAMD", 12) == 0)
+                    detect_cache_amd();
+                else if (strncmp(g_probe.vendor, "GenuineIntel", 12) == 0)
+                    detect_cache_intel();
             }
         }
     }
@@ -421,6 +534,30 @@ void get_fpu_status(char *buf, size_t buflen)
 
     strncpy(buf, ((equip & 0x02) == 0x02) ? "YES" : "no", buflen - 1);
     buf[buflen - 1] = '\0';
+}
+
+static void format_cache_size(char *buf, size_t buflen, int known, unsigned long kb)
+{
+    if (!known)
+        strncpy(buf, "UNKNOWN", buflen - 1);
+    else if (kb == 0UL)
+        strncpy(buf, "none", buflen - 1);
+    else
+        sprintf(buf, "%lu KB", kb);
+
+    buf[buflen - 1] = '\0';
+}
+
+void get_cpu_l1_cache(char *buf, size_t buflen)
+{
+    ensure_probed();
+    format_cache_size(buf, buflen, g_probe.l1_known, g_probe.l1_kb);
+}
+
+void get_cpu_l2_cache(char *buf, size_t buflen)
+{
+    ensure_probed();
+    format_cache_size(buf, buflen, g_probe.l2_known, g_probe.l2_kb);
 }
 
 void get_cpu_info(char *buf, size_t buflen)

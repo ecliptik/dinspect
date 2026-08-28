@@ -216,6 +216,8 @@ int main(int argc, char *argv[])
     ADD_FIELD("CPU Speed", get_cpu_speed(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("CPU Features", get_cpu_features(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Floating Point Unit", get_fpu_status(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("L1 Cache", get_cpu_l1_cache(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("L2 Cache", get_cpu_l2_cache(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Base Memory", get_base_memory(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Ext. Memory", get_extended_memory(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Video", get_video_info(fields[count].value, sizeof(fields[count].value)));
