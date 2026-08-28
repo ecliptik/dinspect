@@ -298,56 +298,12 @@ static unsigned long estimate_mhz_from_loop_rate(unsigned long iterations_per_se
     return (iterations_per_sec * EST_CYCLES_PER_ITERATION + 500000UL) / 1000000UL;
 }
 
-/* Real DOS-era CPUs of the generation that reaches this loop-estimate
- * path (386/486-class, plus the 486-socket Pentium OverDrive) only ever
- * shipped at a bus speed times a small set of clock multipliers -- they
- * can't run at just any MHz value. Listed as bus x multiplier so the
- * provenance of each entry is visible:
- *   16, 20, 25, 33, 40 MHz  - x1 (386/486 with no clock doubling)
- *   32, 40, 50, 66, 80 MHz  - x2 (486DX2)
- *   63, 83 MHz              - x2.5 (Pentium OverDrive for 486 boards --
- *                             the one documented exception to the
- *                             "even multiplier" pattern above)
- *   75, 100 MHz             - x3 (486DX4)
- *   133 MHz                 - x4 (AMD Am5x86)
- * snap_to_plausible_mhz() rounds a noisy loop-based estimate (see the
- * ~8% run-to-run variance noted under EST_CYCLES_PER_ITERATION above)
- * to whichever of these is numerically closest, so "~59 MHz" becomes
- * the "~66 MHz" a real DX2-66 actually is instead of a value no chip
- * was ever binned at. Ties favor the lower speed. A CPU running at a
- * bus/multiplier combination not listed here (rare for this era, but
- * possible) will get pulled to the nearest listed speed instead of
- * reporting its true one -- an accepted tradeoff for correcting the
- * much more common case of measurement noise landing between two real
- * speeds.
+/* snap_to_plausible_mhz(), which corrects this estimate's noise against
+ * a table of real DOS-era clock grades, is defined further down (after
+ * cpu_model_name() below) so it can restrict that table to the specific
+ * chip CPUID already identified -- see the comment there for why that
+ * matters.
  */
-static unsigned long snap_to_plausible_mhz(unsigned long raw_mhz)
-{
-    static const unsigned long PLAUSIBLE_MHZ[] = {
-        16UL, 20UL, 25UL, 32UL, 33UL, 40UL, 50UL, 63UL,
-        66UL, 75UL, 80UL, 83UL, 100UL, 133UL
-    };
-    size_t i;
-    unsigned long best = raw_mhz;
-    unsigned long best_diff = (unsigned long)-1L;
-
-    if (raw_mhz == 0UL)
-        return 0UL; /* loop rate measurement failed outright -- leave it
-                      * as UNKNOWN, don't snap 0 to the nearest table
-                      * entry */
-
-    for (i = 0; i < sizeof(PLAUSIBLE_MHZ) / sizeof(PLAUSIBLE_MHZ[0]); i++) {
-        unsigned long candidate = PLAUSIBLE_MHZ[i];
-        unsigned long diff = (raw_mhz > candidate) ? raw_mhz - candidate : candidate - raw_mhz;
-
-        if (diff < best_diff) {
-            best_diff = diff;
-            best = candidate;
-        }
-    }
-
-    return best;
-}
 
 /* Recognized CPUID (family, model) -> friendly name, for the vendors
  * that actually shipped DOS-era hardware. NULL for anything not in the
@@ -417,6 +373,121 @@ static const char *short_vendor(const char *vendor)
     if (strncmp(vendor, "GenuineIntel", 12) == 0) return "Intel";
     if (strncmp(vendor, "AuthenticAMD", 12) == 0) return "AMD";
     return vendor;
+}
+
+/* Real clock grades for the specific chip models above, used to narrow
+ * snap_to_plausible_mhz()'s candidate table once CPUID has already told
+ * us which one this is -- e.g. a recognized 486DX2 can only ever be one
+ * of these three, never the Pentium OverDrive-only 63/83 MHz grades.
+ * (AMD's family-4 parts collapse to one generic "Am486/5x86" name in
+ * cpu_model_name() above -- that single name spans x1 through x4
+ * multipliers, so it isn't narrow enough to restrict by; those fall
+ * through to the full generic table instead, same as an unrecognized
+ * model.)
+ */
+static const unsigned long MHZ_486DX[]      = { 25UL, 33UL, 40UL };
+static const unsigned long MHZ_486SX[]      = { 16UL, 20UL, 25UL, 33UL };
+static const unsigned long MHZ_486SL[]      = { 25UL, 33UL };
+static const unsigned long MHZ_486DX2[]     = { 50UL, 66UL, 80UL };
+static const unsigned long MHZ_486DX4[]     = { 75UL, 100UL };
+static const unsigned long MHZ_PENTIUM_OD[] = { 63UL, 83UL };
+
+/* Picks the right table above for a friendly model name from
+ * cpu_model_name() (NULL/unrecognized falls through, *count left at 0).
+ */
+static const unsigned long *candidates_for_model_name(const char *model_name, size_t *count)
+{
+    if (model_name != NULL) {
+        if (strcmp(model_name, "486DX") == 0) {
+            *count = sizeof(MHZ_486DX) / sizeof(MHZ_486DX[0]);
+            return MHZ_486DX;
+        }
+        if (strcmp(model_name, "486SX") == 0) {
+            *count = sizeof(MHZ_486SX) / sizeof(MHZ_486SX[0]);
+            return MHZ_486SX;
+        }
+        if (strcmp(model_name, "486SL") == 0) {
+            *count = sizeof(MHZ_486SL) / sizeof(MHZ_486SL[0]);
+            return MHZ_486SL;
+        }
+        if (strcmp(model_name, "486SX2") == 0 ||
+            strcmp(model_name, "486DX2") == 0 ||
+            strcmp(model_name, "486DX2 (WB)") == 0) {
+            *count = sizeof(MHZ_486DX2) / sizeof(MHZ_486DX2[0]);
+            return MHZ_486DX2;
+        }
+        if (strcmp(model_name, "486DX4") == 0 ||
+            strcmp(model_name, "486DX4 (WB)") == 0) {
+            *count = sizeof(MHZ_486DX4) / sizeof(MHZ_486DX4[0]);
+            return MHZ_486DX4;
+        }
+        if (strcmp(model_name, "Pentium OverDrive") == 0) {
+            *count = sizeof(MHZ_PENTIUM_OD) / sizeof(MHZ_PENTIUM_OD[0]);
+            return MHZ_PENTIUM_OD;
+        }
+    }
+
+    *count = 0;
+    return NULL;
+}
+
+/* Rounds a noisy loop-based MHz estimate (see the ~8% run-to-run
+ * variance noted under EST_CYCLES_PER_ITERATION above) to the nearest
+ * real DOS-era clock grade, so "~59 MHz" becomes the "~66 MHz" a real
+ * DX2-66 actually is instead of a value no chip was ever binned at.
+ *
+ * When CPUID already identified the specific model (model_name from
+ * cpu_model_name(), possibly NULL), the candidate table is narrowed to
+ * only the grades that chip could actually be -- this is what makes the
+ * snap reliable rather than just relabeling noise: a 486DX2's raw
+ * estimate can drift anywhere from ~61 to ~70 across runs given that
+ * ~8% variance, comfortably closer to 63 than 66 on a bad run, but a
+ * 486DX2 was never sold at 63 MHz (that grade is Pentium OverDrive-only,
+ * a different multiplier entirely) -- so once the model is known, 63
+ * isn't a valid answer regardless of which speed the noisy estimate
+ * happens to land nearest. Falls back to the full combined table
+ * (covering every grade across all recognized models) when the model
+ * isn't recognized, since there's nothing to narrow by in that case.
+ * Ties favor the lower speed.
+ */
+static unsigned long snap_to_plausible_mhz(unsigned long raw_mhz, const char *model_name)
+{
+    static const unsigned long GENERIC_MHZ[] = {
+        16UL, 20UL, 25UL, 32UL, 33UL, 40UL, 50UL, 63UL,
+        66UL, 75UL, 80UL, 83UL, 100UL, 133UL
+    };
+    const unsigned long *table = GENERIC_MHZ;
+    size_t table_count = sizeof(GENERIC_MHZ) / sizeof(GENERIC_MHZ[0]);
+    const unsigned long *model_table;
+    size_t model_count;
+    size_t i;
+    unsigned long best, best_diff;
+
+    if (raw_mhz == 0UL)
+        return 0UL; /* loop rate measurement failed outright -- leave it
+                      * as UNKNOWN, don't snap 0 to the nearest table
+                      * entry */
+
+    model_table = candidates_for_model_name(model_name, &model_count);
+    if (model_table != NULL) {
+        table = model_table;
+        table_count = model_count;
+    }
+
+    best = raw_mhz;
+    best_diff = (unsigned long)-1L;
+
+    for (i = 0; i < table_count; i++) {
+        unsigned long candidate = table[i];
+        unsigned long diff = (raw_mhz > candidate) ? raw_mhz - candidate : candidate - raw_mhz;
+
+        if (diff < best_diff) {
+            best_diff = diff;
+            best = candidate;
+        }
+    }
+
+    return best;
 }
 
 /* AMD publishes L1/L2 cache sizes directly as bitfields in extended
@@ -570,11 +641,16 @@ static void ensure_probed(void)
         }
     }
 
-    if (g_probe.has_tsc)
+    if (g_probe.has_tsc) {
         g_probe.speed_value = measure_mhz_via_tsc();
-    else
+    } else {
+        const char *model_name = g_probe.has_cpuid
+            ? cpu_model_name(g_probe.vendor, g_probe.family, g_probe.model)
+            : NULL;
+
         g_probe.speed_value = snap_to_plausible_mhz(
-            estimate_mhz_from_loop_rate(measure_loop_rate_via_pit()));
+            estimate_mhz_from_loop_rate(measure_loop_rate_via_pit()), model_name);
+    }
 }
 
 void get_fpu_status(char *buf, size_t buflen)
