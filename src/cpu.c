@@ -200,6 +200,33 @@ static unsigned long measure_loop_rate_via_pit(void)
         mov port61_orig, al
     }
 
+    /* Disable the gate (clear bit 0) before reprogramming, then
+     * program the counter while it's stopped, then enable the gate
+     * afterward -- not merely "make sure it ends up enabled".
+     *
+     * Channel 2 is very likely already gated on at this point (that's
+     * the normal BIOS-default state for the PC speaker channel), and
+     * for mode 2 (rate generator) specifically, the 8253/8254 datasheet
+     * documents that writing a new count to an *already-counting*
+     * channel does NOT take effect immediately -- it's queued and only
+     * loads at the counter's own next natural terminal count. Simply
+     * writing the new mode/reload and then unconditionally setting the
+     * gate bit (which was likely already set, so no low-to-high edge
+     * ever occurs) leaves the channel free-running under whatever
+     * mode/reload it happened to have before this function ever
+     * touched it -- explaining real-hardware testing that consistently
+     * saw elapsed-tick readings landing near an arbitrary, session-
+     * stable-but-not-65536 period instead of the intended one. A gate
+     * low-to-high transition is the documented, reliable way to force
+     * an immediate reload to the newly-programmed count.
+     */
+    _asm {
+        mov al, port61_orig
+        and al, 0FEh
+        out 61h, al
+    }
+    io_delay();
+
     /* Program channel 2: mode 2 (rate generator), LSB/MSB, binary,
      * reload 0 (== 65536), a free-running down-counter we only read.
      * io_delay() between each write: see its comment above pit_read_
@@ -221,9 +248,11 @@ static unsigned long measure_loop_rate_via_pit(void)
     }
     io_delay();
 
-    /* Enable the gate (bit 0) so the counter runs; leave every other
-     * bit (including the speaker-data bit) exactly as found, so this
-     * stays silent and doesn't disturb anything else using port 0x61.
+    /* Rising edge: gate was just forced low above, so this unconditional
+     * set is a genuine low-to-high transition, not a no-op -- see the
+     * comment above. Leaves every other bit (including the speaker-data
+     * bit) exactly as found, so this stays silent and doesn't disturb
+     * anything else using port 0x61.
      */
     _asm {
         mov al, port61_orig
@@ -294,19 +323,47 @@ static unsigned long measure_loop_rate_via_pit(void)
                                        * rate, and don't spin forever */
     }
 
-    _asm { sti }
-
-    /* Restore the gate bit exactly as we found it. */
-    _asm {
-        mov al, port61_orig
-        out 61h, al
-    }
-
+    /* Snapshot into fresh locals RIGHT HERE, before any further _asm
+     * block runs (STI, gate-bit restore below). Watcom's plain _asm{}
+     * blocks (no input/output/clobber list, the only form used in this
+     * project) are documented to be safe to mix with C variables, but
+     * real-hardware testing here showed elapsed_pit_ticks consistently
+     * reading back as 65534/65535 (0xFFFE/0xFFFF) after this point --
+     * suspiciously exactly the pattern of a 16-bit register left
+     * holding stale/clobbered bits rather than a genuinely computed
+     * value, e.g. if the compiler kept this variable's low word live
+     * in AX across the "mov al, port61_orig" below (which only writes
+     * AL, leaving AH whatever it last was) instead of reloading it
+     * from memory. Reading everything out to volatile locals forces a
+     * real memory round-trip here, before that block ever runs, so
+     * nothing downstream can observe a post-asm-clobbered value
+     * regardless of whether that theory is exactly right.
+     */
     {
-        char msg[96];
-        sprintf(msg, "pit2: start=%u last=%u pass=%lu elapsed_ticks=%lu iters=%lu",
-                start_count, count, pass_count, elapsed_pit_ticks, iterations);
-        debug_log(msg);
+        volatile unsigned long final_elapsed_ticks = elapsed_pit_ticks;
+        volatile unsigned long final_iterations = iterations;
+        volatile unsigned long final_pass_count = pass_count;
+        volatile unsigned final_start_count = start_count;
+        volatile unsigned final_count = count;
+
+        _asm { sti }
+
+        /* Restore the gate bit exactly as we found it. */
+        _asm {
+            mov al, port61_orig
+            out 61h, al
+        }
+
+        {
+            char msg[96];
+            sprintf(msg, "pit2: start=%u last=%u pass=%lu elapsed_ticks=%lu iters=%lu",
+                    final_start_count, final_count, final_pass_count,
+                    final_elapsed_ticks, final_iterations);
+            debug_log(msg);
+        }
+
+        elapsed_pit_ticks = final_elapsed_ticks;
+        iterations = final_iterations;
     }
 
     if (elapsed_pit_ticks == 0UL)
