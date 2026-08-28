@@ -24,69 +24,10 @@
 #include "sysinfo.h"
 #include "video.h"
 
-/* TEMPORARY diagnostic instrumentation for the real-hardware hang
- * investigation (see git log) -- logs which field is about to be
- * collected to DFDEBUG.LOG, so a hung run shows exactly where
- * execution got stuck instead of the "zero output ever" symptom every
- * hang looks like on screen (render_screen() only runs once, after
- * every field finishes). Opens, writes, and closes the file for each
- * line rather than keeping a handle open across the run, so the entry
- * is durable on disk even if the program hangs immediately afterward
- * and never reaches a clean exit. To be removed once the real hang is
- * found and fixed.
- */
-static void debug_log(const char *msg)
-{
-    FILE *fp = fopen("DFDEBUG.LOG", "a");
-
-    if (fp != NULL) {
-        fprintf(fp, "%s\n", msg);
-        fclose(fp);
-    }
-}
-
-#define DIAG_MK_FP(seg, off) \
-    ((unsigned char _far *)(((unsigned long)(seg) << 16) | (unsigned)(off)))
-
-/* TEMPORARY: settles which video segment is actually live on the real
- * hardware being tested (see git log) -- writes a distinguishable
- * label into segment 0xB000 (row 0) and another into 0xB800 (row 1),
- * logs the raw BIOS-data-area video mode byte, then exits immediately
- * so the labels aren't overwritten by the normal render. Whichever
- * label is visible on screen tells us which segment output.c should
- * be targeting. To be removed once the real issue is found and fixed.
- */
-static void video_probe_diagnostic(void)
-{
-    unsigned char _far *mode_byte = DIAG_MK_FP(0x0040, 0x0049);
-    unsigned char _far *b000 = DIAG_MK_FP(0xB000, 0);
-    unsigned char _far *b800 = DIAG_MK_FP(0xB800, 0);
-    static const char s_b000[] = "SEG-B000-LIVE";
-    static const char s_b800[] = "SEG-B800-LIVE";
-    char msg[64];
-    unsigned i;
-
-    sprintf(msg, "video diag: BDA mode byte (0040:0049) = %u", (unsigned)*mode_byte);
-    debug_log(msg);
-
-    for (i = 0; s_b000[i] != '\0'; i++) {
-        b000[i * 2]     = (unsigned char)s_b000[i];
-        b000[i * 2 + 1] = 0x0F;
-    }
-    for (i = 0; s_b800[i] != '\0'; i++) {
-        b800[(80 + i) * 2]     = (unsigned char)s_b800[i];
-        b800[(80 + i) * 2 + 1] = 0x0F;
-    }
-
-    debug_log("video diag: wrote test labels to B000 row0 and B800 row1, exiting now");
-}
-
 #define ADD_FIELD(label_str, getter_call) \
     do { \
-        debug_log("starting field: " label_str); \
         fields[count].label = (label_str); \
         getter_call; \
-        debug_log("finished field: " label_str); \
         count++; \
     } while (0)
 
@@ -163,26 +104,11 @@ int main(int argc, char *argv[])
     const char *out_path = NULL;
     int i;
 
-    debug_log("main() started");
-
-    {
-        unsigned char _far *mode_byte = DIAG_MK_FP(0x0040, 0x0049);
-        char mode_msg[48];
-        sprintf(mode_msg, "video: BDA mode byte at entry = %u", (unsigned)*mode_byte);
-        debug_log(mode_msg);
-    }
-
-    if (argc > 1 && stricmp(argv[1], "--video-diag") == 0) {
-        video_probe_diagnostic();
-        return 0;
-    }
-
     /* Before anything else touches a disk: silently Fail any critical
      * error (empty floppy, empty CD-ROM, etc.) instead of blocking on
      * DOS's "Abort, Retry, Fail?" prompt. See critical_error.h.
      */
     install_silent_critical_handler();
-    debug_log("critical handler installed");
 
     for (i = 1; i < argc; i++) {
         if (stricmp(argv[i], "--no-logo") == 0) {
@@ -231,23 +157,12 @@ int main(int argc, char *argv[])
     ADD_FIELD("Network IP Config", get_network_ip_info(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Floppy drives", get_floppy_count(fields[count].value, sizeof(fields[count].value)));
 
-    debug_log("starting add_disk_fields");
     add_disk_fields(fields, &count, MAX_FIELDS);
-    debug_log("finished add_disk_fields");
 
     if (!show_undetected)
         count = filter_undetected(fields, count);
 
-    {
-        unsigned char _far *mode_byte = DIAG_MK_FP(0x0040, 0x0049);
-        char mode_msg[48];
-        sprintf(mode_msg, "video: BDA mode byte before render = %u", (unsigned)*mode_byte);
-        debug_log(mode_msg);
-    }
-
-    debug_log("starting render_screen");
     render_screen(fields, count, show_logo, plain, no_color, get_dos_vendor());
-    debug_log("finished render_screen");
 
     if (out_path != NULL) {
         if (write_fields_file(fields, count, out_path) != 0) {

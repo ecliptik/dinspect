@@ -43,21 +43,6 @@
 #include "cpu386.h"
 #include "sysinfo.h"
 
-/* TEMPORARY diagnostic instrumentation for the real-hardware hang
- * investigation -- see the matching comment in main.c. Duplicated
- * rather than shared via a header since this is transient debugging
- * code, to be removed once the real hang is found and fixed.
- */
-static void debug_log(const char *msg)
-{
-    FILE *fp = fopen("DFDEBUG.LOG", "a");
-
-    if (fp != NULL) {
-        fprintf(fp, "%s\n", msg);
-        fclose(fp);
-    }
-}
-
 typedef struct {
     int probed;
     int has_cpuid;
@@ -467,19 +452,16 @@ static void ensure_probed(void)
         return;
     g_probe.probed = 1;
 
-    debug_log("cpu: checking is_386_or_later");
     if (!is_386_or_later()) {
         g_probe.has_cpuid = 0;
         g_probe.has_tsc = 0;
         g_probe.class_desc = "8086/80286-class (pre-386)";
     } else {
-        debug_log("cpu: checking is_486_or_later");
         if (!is_486_or_later()) {
             g_probe.has_cpuid = 0;
             g_probe.has_tsc = 0;
             g_probe.class_desc = "80386";
         } else {
-            debug_log("cpu: checking has_cpuid");
             if (!has_cpuid()) {
                 g_probe.has_cpuid = 0;
                 g_probe.has_tsc = 0;
@@ -487,7 +469,6 @@ static void ensure_probed(void)
             } else {
                 unsigned long a, b, c, d;
 
-                debug_log("cpu: cpuid available, querying leaves");
                 g_probe.has_cpuid = 1;
 
                 cpuid_call(0UL, &a, &b, &c, &d);
@@ -503,7 +484,6 @@ static void ensure_probed(void)
                 g_probe.edx_features = d;
                 g_probe.has_tsc = (d & 0x10UL) != 0UL;
 
-                debug_log("cpu: querying cache size");
                 if (strncmp(g_probe.vendor, "AuthenticAMD", 12) == 0)
                     detect_cache_amd();
                 else if (strncmp(g_probe.vendor, "GenuineIntel", 12) == 0)
@@ -511,16 +491,11 @@ static void ensure_probed(void)
             }
         }
     }
-    debug_log("cpu: class/cpuid detection done");
 
-    if (g_probe.has_tsc) {
-        debug_log("cpu: measuring speed via RDTSC");
+    if (g_probe.has_tsc)
         g_probe.speed_value = measure_mhz_via_tsc();
-    } else {
-        debug_log("cpu: measuring speed via PIT loop (measure_loop_rate_via_pit)");
+    else
         g_probe.speed_value = estimate_mhz_from_loop_rate(measure_loop_rate_via_pit());
-        debug_log("cpu: PIT loop returned");
-    }
 }
 
 void get_fpu_status(char *buf, size_t buflen)
