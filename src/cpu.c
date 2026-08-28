@@ -264,14 +264,25 @@ static unsigned long measure_loop_rate_via_pit(void)
  * at all despite several attempts to fix its reprogramming sequence).
  * Once channel-0 timing was confirmed solid and reproducible (vcctrl:
  * identical elapsed_ticks/rate across 5 consecutive runs), it measured
- * a loop rate of 2,048,000 iterations/sec on the same documented
- * 486DX2-50, which a true 50 MHz chip reaches at ~24.4 cycles/
- * iteration -- almost exactly double the old, now-understood-to-be-
- * built-on-broken-timing value. 24 is that measurement rounded to the
- * nearest whole number (49.15 MHz for this data point). Still a
- * single real calibration point, not a per-architecture-verified
- * constant -- if a different CPU generation turns out to need a
- * different value, that's the next thing to revisit here.
+ * a loop rate of 2,048,000 iterations/sec on a documented 486DX2-50,
+ * which a true 50 MHz chip reaches at ~24.4 cycles/iteration -- almost
+ * exactly double the old, now-understood-to-be-built-on-broken-timing
+ * value. 24 is that measurement rounded to the nearest whole number
+ * (49.15 MHz for this data point).
+ *
+ * Second calibration point (vcctrl, same rig family after a CPU swap):
+ * a 486DX2-66 measured 2,703,000 iterations/sec. Ratio against the
+ * DX2-50 point (2,703,000 / 2,048,000 = 1.3198) lines up almost exactly
+ * with the true clock ratio (66/50 = 1.32), and 24 unchanged gives
+ * 64.87 MHz against the real 66 MHz -- so the constant scales linearly
+ * across at least these two real bus speeds (25 MHz and 33 MHz FSB)
+ * without needing a bus-speed-dependent correction. An earlier reading
+ * on this same DX2-66 (~59 MHz, before raw-iteration-rate logging was
+ * available to confirm it) turned out to be run-to-run measurement
+ * noise, not a systematic error -- worth remembering that this method
+ * can apparently swing ~8% between runs on identical hardware/code, so
+ * a single dinspect run's "~N MHz" should be read as approximate in
+ * that sense too, not just for the usual estimation-error reasons.
  */
 #define EST_CYCLES_PER_ITERATION 24UL
 

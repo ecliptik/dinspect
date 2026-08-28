@@ -24,7 +24,8 @@ configurations.
 - **Disks**: floppy drive count, and free/total space for every
   hard-disk-class drive letter from C: onward
 - **Video**: adapter OEM string, VBE version, and video memory via
-  VESA BIOS Extensions
+  VESA BIOS Extensions; chipset make/model via a PCI configuration-space
+  scan, independent of whatever answers the VBE OEM string
 - **Sound**: `BLASTER` environment variable, AdLib/OPL2/3 detection,
   Sound Blaster DSP version, MPU-401 presence
 - **PicoGUS**: presence and current emulation mode (GUS/SB/AdLib/MPU/

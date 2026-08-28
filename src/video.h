@@ -15,4 +15,18 @@ void get_video_info(char *buf, size_t buflen);
  */
 void get_video_memory(char *buf, size_t buflen);
 
+/* Formats the video chipset make/model into buf, identified via a PCI
+ * configuration-space scan (not the VBE OEM string above, which a
+ * VESA TSR can and often does answer generically -- see video.c):
+ *   "<Vendor> <Chip>"       - both recognized (e.g. "S3 ViRGE").
+ *   "<Vendor> (device NNNN)" - vendor recognized, exact chip isn't.
+ *   "PCI NNNN:NNNN"         - neither recognized; raw vendor:device ID.
+ *   "UNKNOWN (no PCI bus)"  - no PCI BIOS present (pre-PCI hardware,
+ *                             or a PCI-less bus like ISA/VLB for the
+ *                             video card specifically).
+ *   "UNKNOWN (no PCI video device)" - PCI present but no display-class
+ *                             device found on it.
+ */
+void get_video_chipset(char *buf, size_t buflen);
+
 #endif

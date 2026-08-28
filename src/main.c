@@ -147,6 +147,7 @@ int main(int argc, char *argv[])
     ADD_FIELD("Base Memory", get_base_memory(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Ext. Memory", get_extended_memory(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Video", get_video_info(fields[count].value, sizeof(fields[count].value)));
+    ADD_FIELD("Video Chipset", get_video_chipset(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Video Memory", get_video_memory(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Sound BLASTER", get_blaster_env(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Sound OPL", get_opl_status(fields[count].value, sizeof(fields[count].value)));

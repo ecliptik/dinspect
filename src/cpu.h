@@ -39,11 +39,13 @@ void get_cpu_features(char *buf, size_t buflen);
 /* Formats a clock speed into buf:
  *   "<n> MHz"  - measured via the time-stamp counter (Pentium-class+
  *               with TSC); a real reading.
- *   "~<n> MHz" - derived from a PIT channel 2 timed loop (used when
+ *   "~<n> MHz" - derived from a PIT channel 0 timed loop (used when
  *               there's no TSC) via a cycles-per-iteration constant
- *               calibrated against one real data point so far -- see
+ *               calibrated against two real data points so far -- see
  *               the EST_CYCLES_PER_ITERATION comment in cpu.c. The
- *               leading "~" marks it as approximate, not exact.
+ *               leading "~" marks it as approximate, not exact -- this
+ *               method has also shown ~8% run-to-run variance on
+ *               identical hardware, so treat a single reading loosely.
  *   "UNKNOWN"  - neither measurement produced a usable result.
  */
 void get_cpu_speed(char *buf, size_t buflen);
