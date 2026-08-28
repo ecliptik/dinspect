@@ -25,15 +25,15 @@
  * 2 (the PC speaker channel, silently gated via port 0x61 bit 0, left
  * exactly as found afterward), converted to an *estimated* MHz figure
  * via a single cycles-per-iteration constant (see
- * EST_CYCLES_PER_ITERATION below) -- always labeled "~N MHz
- * (estimated)" rather than presented as a precise reading, since that
- * constant is only calibrated against one real data point so far (a
- * 486DX2-50), not verified across CPU generations. An earlier version
- * of this code avoided the MHz unit entirely for exactly this reason;
- * the current approach trades a bit of that caution for actually
- * answering "how fast is this CPU" in the units people expect, while
- * keeping the "estimated" label front and center rather than burying
- * the caveat in a comment only.
+ * EST_CYCLES_PER_ITERATION below) -- always labeled "~N MHz" (the
+ * leading "~" marking it approximate) rather than presented as a
+ * precise reading, since that constant is only calibrated against one
+ * real data point so far (a 486DX2-50), not verified across CPU
+ * generations. An earlier version of this code avoided the MHz unit
+ * entirely for exactly this reason; the current approach trades a bit
+ * of that caution for actually answering "how fast is this CPU" in
+ * the units people expect, while keeping the "~" front and center
+ * rather than burying the caveat in a comment only.
  */
 
 #include <stdio.h>
@@ -597,7 +597,7 @@ void get_cpu_speed(char *buf, size_t buflen)
     if (g_probe.has_tsc && g_probe.speed_value > 0UL)
         sprintf(buf, "%lu MHz", g_probe.speed_value);
     else if (g_probe.speed_value > 0UL)
-        sprintf(buf, "~%lu MHz (estimated)", g_probe.speed_value);
+        sprintf(buf, "~%lu MHz", g_probe.speed_value);
     else {
         strncpy(buf, "UNKNOWN", buflen - 1);
         buf[buflen - 1] = '\0';
