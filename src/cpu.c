@@ -352,7 +352,28 @@ static const char *cpu_model_name(const char *vendor, unsigned family, unsigned 
             }
         }
     } else if (is_amd) {
-        if (family == 4) return "Am486/5x86";
+        if (family == 4) {
+            /* Real CPUID leaf 1 EAX[7:4] model values for AMD's
+             * Enhanced Am486 and Am5X86 microprocessors, from AMD's own
+             * BIOS Development Guide (pub #19720C, section 4 "CPUID
+             * Instruction for the Enhanced Am486 and Am5X86
+             * Microprocessors"). Unlike Intel's table above, models 8
+             * and 9 are genuinely ambiguous in AMD's own documented
+             * scheme -- Enhanced Am486DX4 and the OEM-only Am5X86-150
+             * share the identical model nibble, and AMD's own
+             * identification flowchart resolves that ambiguity with a
+             * runtime clock-speed check, not CPUID alone. See the
+             * Am486DX4/5x86-150 case in candidates_for_model_name()
+             * below, which mirrors that by leaving the choice to
+             * dinspect's own speed estimate instead of guessing.
+             */
+            switch (model) {
+                case 3: case 7:     return "Am486DX2";
+                case 8: case 9:     return "Am486DX4/5x86-150";
+                case 0xE: case 0xF: return "Am5x86";
+                default:            return "Am486/5x86";
+            }
+        }
         if (family == 5) {
             switch (model) {
                 case 0: case 1: case 2: case 3: return "K5";
@@ -379,11 +400,19 @@ static const char *short_vendor(const char *vendor)
  * snap_to_plausible_mhz()'s candidate table once CPUID has already told
  * us which one this is -- e.g. a recognized 486DX2 can only ever be one
  * of these three, never the Pentium OverDrive-only 63/83 MHz grades.
- * (AMD's family-4 parts collapse to one generic "Am486/5x86" name in
- * cpu_model_name() above -- that single name spans x1 through x4
- * multipliers, so it isn't narrow enough to restrict by; those fall
- * through to the full generic table instead, same as an unrecognized
- * model.)
+ * An unrecognized model (including AMD family-4 models outside the
+ * switch in cpu_model_name() above, which fall back to the generic
+ * "Am486/5x86" name spanning every multiplier AMD ever shipped in that
+ * family) falls through to the full generic table instead, since
+ * there's nothing narrower to restrict by.
+ *
+ * MHZ_AM486DX4_5X86_150 and MHZ_AM5X86 are AMD-specific, from the same
+ * AMD BIOS Development Guide cited in cpu_model_name() above: real
+ * Am486DX4 shipped at 75/100 MHz same as Intel's, but the CPUID model
+ * nibble it shares with the OEM-only Am5X86-150 means the candidate
+ * table has to cover both rather than picking one by name; Am5X86
+ * proper (the unambiguous model nibble) only ever shipped at 133 or
+ * 160 MHz -- never anything in between, and never an Am486DX4 grade.
  */
 static const unsigned long MHZ_486DX[]      = { 25UL, 33UL, 40UL };
 static const unsigned long MHZ_486SX[]      = { 16UL, 20UL, 25UL, 33UL };
@@ -391,6 +420,8 @@ static const unsigned long MHZ_486SL[]      = { 25UL, 33UL };
 static const unsigned long MHZ_486DX2[]     = { 50UL, 66UL, 80UL };
 static const unsigned long MHZ_486DX4[]     = { 75UL, 100UL };
 static const unsigned long MHZ_PENTIUM_OD[] = { 63UL, 83UL };
+static const unsigned long MHZ_AM486DX4_5X86_150[] = { 75UL, 100UL, 150UL };
+static const unsigned long MHZ_AM5X86[]     = { 133UL, 160UL };
 
 /* Picks the right table above for a friendly model name from
  * cpu_model_name() (NULL/unrecognized falls through, *count left at 0).
@@ -412,7 +443,8 @@ static const unsigned long *candidates_for_model_name(const char *model_name, si
         }
         if (strcmp(model_name, "486SX2") == 0 ||
             strcmp(model_name, "486DX2") == 0 ||
-            strcmp(model_name, "486DX2 (WB)") == 0) {
+            strcmp(model_name, "486DX2 (WB)") == 0 ||
+            strcmp(model_name, "Am486DX2") == 0) {
             *count = sizeof(MHZ_486DX2) / sizeof(MHZ_486DX2[0]);
             return MHZ_486DX2;
         }
@@ -420,6 +452,14 @@ static const unsigned long *candidates_for_model_name(const char *model_name, si
             strcmp(model_name, "486DX4 (WB)") == 0) {
             *count = sizeof(MHZ_486DX4) / sizeof(MHZ_486DX4[0]);
             return MHZ_486DX4;
+        }
+        if (strcmp(model_name, "Am486DX4/5x86-150") == 0) {
+            *count = sizeof(MHZ_AM486DX4_5X86_150) / sizeof(MHZ_AM486DX4_5X86_150[0]);
+            return MHZ_AM486DX4_5X86_150;
+        }
+        if (strcmp(model_name, "Am5x86") == 0) {
+            *count = sizeof(MHZ_AM5X86) / sizeof(MHZ_AM5X86[0]);
+            return MHZ_AM5X86;
         }
         if (strcmp(model_name, "Pentium OverDrive") == 0) {
             *count = sizeof(MHZ_PENTIUM_OD) / sizeof(MHZ_PENTIUM_OD[0]);
