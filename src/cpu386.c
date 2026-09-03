@@ -86,16 +86,42 @@ void cpuid_call(unsigned long leaf, unsigned long *a, unsigned long *b,
     *d = rd;
 }
 
+/* Hard cap on each BIOS-tick poll loop below, matching the bounded-poll
+ * discipline every other hardware probe in this project follows (see
+ * PIT_LOOP_MAX_PASSES in cpu.c). Both loops here spin on get_tick_count()
+ * (INT 1Ah), which only ever advances because IRQ0's handler updates the
+ * BIOS tick count in the background -- nothing stops that from never
+ * happening again after this function is entered (a masked/hung IRQ0 on
+ * whatever's driving the PIT, for instance), and unlike the PIT-channel-0
+ * read cpu.c uses, get_tick_count() itself can't detect that condition on
+ * its own. This path only ever runs once CPUID leaf 1 has already
+ * confirmed TSC support (has_tsc), which every chip tested against this
+ * project so far predates -- so it's never actually been exercised on
+ * real hardware until now, unlike the PIT loop it mirrors. 300,000 polls
+ * is far more than the handful of ticks either wait normally needs even
+ * on the slowest TSC-capable (Pentium-class) chip, while still bounded.
+ */
+#define TSC_WAIT_MAX_POLLS 300000UL
+
 unsigned long measure_mhz_via_tsc(void)
 {
     unsigned long start_tick, tick;
     unsigned long tsc_start, tsc_end, eax_val;
     unsigned long elapsed_ticks, elapsed_ms;
+    unsigned long polls;
 
     start_tick = get_tick_count();
+    polls = 0UL;
     do {
         tick = get_tick_count();
-    } while (tick == start_tick); /* align to a tick boundary */
+        polls++;
+    } while (tick == start_tick && polls < TSC_WAIT_MAX_POLLS); /* align
+                                                                   * to a
+                                                                   * tick
+                                                                   * boundary */
+    if (polls >= TSC_WAIT_MAX_POLLS)
+        return 0UL; /* BIOS tick count never advanced -- report UNKNOWN,
+                      * don't spin forever */
 
     _asm {
         rdtsc
@@ -104,9 +130,13 @@ unsigned long measure_mhz_via_tsc(void)
     tsc_start = eax_val;
 
     start_tick = tick;
+    polls = 0UL;
     do {
         tick = get_tick_count();
-    } while (tick - start_tick < 4UL);
+        polls++;
+    } while (tick - start_tick < 4UL && polls < TSC_WAIT_MAX_POLLS);
+    if (polls >= TSC_WAIT_MAX_POLLS)
+        return 0UL;
 
     _asm {
         rdtsc
