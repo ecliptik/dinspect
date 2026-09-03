@@ -655,14 +655,36 @@ static void ensure_probed(void)
 
 void get_fpu_status(char *buf, size_t buflen)
 {
-    unsigned equip;
+    int has_fpu;
 
-    _asm {
-        int 11h
-        mov equip, ax
+    ensure_probed();
+
+    if (g_probe.has_cpuid) {
+        /* CPUID leaf 1 EDX bit 0 reflects the silicon itself and is
+         * authoritative once available -- prefer it over the INT 11h
+         * equipment word below. Confirmed wrong in the field on an AMD
+         * Am5x86-133 (swapped in for a 486DX2-50 on the same board):
+         * INT 11h reported no FPU even though the Am5x86 has one and a
+         * float-heavy DJGPP program ran correctly on it. Many BIOSes
+         * populate the equipment word's FPU bit from a CMOS setup
+         * setting or jumper-sensed default established at an earlier
+         * boot rather than probing the CPU live, so it can go stale
+         * after a CPU swap that didn't also refresh CMOS -- exactly
+         * this case.
+         */
+        has_fpu = (g_probe.edx_features & 0x00000001UL) != 0UL;
+    } else {
+        unsigned equip;
+
+        _asm {
+            int 11h
+            mov equip, ax
+        }
+
+        has_fpu = (equip & 0x02) == 0x02;
     }
 
-    strncpy(buf, ((equip & 0x02) == 0x02) ? "YES" : "no", buflen - 1);
+    strncpy(buf, has_fpu ? "YES" : "no", buflen - 1);
     buf[buflen - 1] = '\0';
 }
 

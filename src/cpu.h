@@ -1,6 +1,9 @@
-/* cpu.h - CPU facts: FPU presence (INT 11h), and, where the hardware
- * supports it, CPUID-derived vendor/family/model/stepping, feature
- * flags, and an approximate clock speed.
+/* cpu.h - CPU facts: FPU presence (CPUID leaf 1 EDX bit 0 when CPUID is
+ * available, since that reflects the silicon rather than a possibly
+ * stale BIOS/CMOS setting -- INT 11h's equipment word only as a
+ * fallback on pre-CPUID hardware), and, where the hardware supports
+ * it, CPUID-derived vendor/family/model/stepping, feature flags, and
+ * an approximate clock speed.
  *
  * Detection is staged so nothing 386+-only ever executes on genuinely
  * older hardware: a 16-bit-only FLAGS-bit test (safe on any 8086+)
@@ -13,7 +16,11 @@
 
 #include <stddef.h>
 
-/* Formats "YES"/"no" into buf depending on math coprocessor presence. */
+/* Formats "YES"/"no" into buf depending on math coprocessor presence.
+ * Uses CPUID's own FPU feature bit when CPUID is available (the
+ * authoritative source -- see cpu.h's file header comment), falling
+ * back to the INT 11h BIOS equipment word only on pre-CPUID hardware.
+ */
 void get_fpu_status(char *buf, size_t buflen);
 
 /* Formats "<Vendor> <Model>" if CPUID is available and the (vendor,
