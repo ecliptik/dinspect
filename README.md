@@ -18,8 +18,10 @@ configurations.
 
 - **System**: DOS vendor/version, shell (`COMSPEC`)
 - **CPU**: vendor, family/model/stepping, and feature flags via
-  CPUID where available; clock speed via TSC on Pentium-class+, or a
-  labeled loop-throughput estimate on earlier CPUs
+  CPUID where available; clock speed via TSC on Pentium-class+ in true
+  real mode, or a labeled loop-throughput estimate on earlier CPUs and
+  under a V86 memory manager such as EMM386 (RDTSC under one has hung
+  real hardware)
 - **Memory**: base (conventional) and extended memory
 - **Disks**: floppy drive count, and free/total space for every
   hard-disk-class drive letter from C: onward
@@ -48,6 +50,12 @@ dinspect [options]
                      not detected, etc.) instead of omitting them
   -h, --help         Show this help
 ```
+
+With `-o`, the report file is truncated to zero bytes before any probing
+starts and written in full only once every probe has finished. An empty
+report therefore means the run did not complete (hang, crash, reboot),
+never a stale copy from an earlier run -- anything that fetches the report
+by name after a timed run should treat an empty file as a failed run.
 
 ## Building
 

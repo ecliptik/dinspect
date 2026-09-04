@@ -45,9 +45,11 @@ void get_cpu_features(char *buf, size_t buflen);
 
 /* Formats a clock speed into buf:
  *   "<n> MHz"  - measured via the time-stamp counter (Pentium-class+
- *               with TSC); a real reading.
+ *               with TSC, running in true real mode); a real reading.
  *   "~<n> MHz" - derived from a PIT channel 0 timed loop (used when
- *               there's no TSC) via a cycles-per-iteration constant
+ *               there's no TSC, or when a V86 monitor such as EMM386 is
+ *               loaded -- RDTSC under one has hung real hardware, see
+ *               ensure_probed() in cpu.c) via a cycles-per-iteration constant
  *               calibrated against two real data points so far -- see
  *               the EST_CYCLES_PER_ITERATION comment in cpu.c. This
  *               method has also shown ~8% run-to-run variance on

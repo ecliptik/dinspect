@@ -51,6 +51,9 @@ typedef struct {
     int probed;
     int has_cpuid;
     int has_tsc;
+    int speed_measured;        /* speed_value came from RDTSC (exact), not
+                                 * the PIT loop estimate -- see
+                                 * get_cpu_speed() */
     char vendor[13];
     unsigned family, model, stepping;
     unsigned long edx_features;
@@ -606,6 +609,15 @@ static void accumulate_intel_descriptor(unsigned char code)
     }
 }
 
+/* Only valid when CPUID leaf 0 reported a maximum basic leaf of 2 or
+ * more, which on Intel means Pentium Pro or later. Every 486 and every
+ * P5-core Pentium, including the Pentium OverDrive for 486 sockets,
+ * reports max leaf 1, and what those parts return for an out-of-range
+ * leaf is undefined rather than zero -- so ensure_probed() skips this
+ * probe entirely on them (leaving L1/L2 as UNKNOWN) instead of decoding
+ * whatever bytes happened to come back as cache descriptors. Confirmed
+ * on the vcctrl rig's Pentium OverDrive 83, whose leaf 0 EAX is 1.
+ */
 static void detect_cache_intel(void)
 {
     unsigned long a, b, c, d;
@@ -656,11 +668,12 @@ static void ensure_probed(void)
                 g_probe.has_tsc = 0;
                 g_probe.class_desc = "80486 (no CPUID)";
             } else {
-                unsigned long a, b, c, d;
+                unsigned long a, b, c, d, max_leaf;
 
                 g_probe.has_cpuid = 1;
 
                 cpuid_call(0UL, &a, &b, &c, &d);
+                max_leaf = a;
                 memcpy(g_probe.vendor, &b, 4);
                 memcpy(g_probe.vendor + 4, &d, 4);
                 memcpy(g_probe.vendor + 8, &c, 4);
@@ -675,14 +688,36 @@ static void ensure_probed(void)
 
                 if (strncmp(g_probe.vendor, "AuthenticAMD", 12) == 0)
                     detect_cache_amd();
-                else if (strncmp(g_probe.vendor, "GenuineIntel", 12) == 0)
-                    detect_cache_intel();
+                else if (strncmp(g_probe.vendor, "GenuineIntel", 12) == 0 &&
+                         max_leaf >= 2UL)
+                    detect_cache_intel(); /* leaf 2 only exists from the
+                                           * Pentium Pro on -- see the
+                                           * detect_cache_intel() comment */
             }
         }
     }
 
-    if (g_probe.has_tsc) {
+    /* RDTSC is only used in true real mode. Under a V86 monitor it is
+     * skipped even though CPUID says the TSC exists, because on the
+     * vcctrl rig's Pentium OverDrive 83 under MS-DOS 6.22 EMM386 NOEMS
+     * (V86 mode) the very first RDTSC never returned: a step-by-step
+     * trace build showed CPUID leaves 0/1, the PUSHFD/POPFD bit toggles
+     * and the BIOS tick wait all completing, then the line printed
+     * immediately before RDTSC as the last thing on screen, with
+     * interrupts still being serviced (keyboard LEDs kept responding)
+     * but no forward progress, twice in a row, until a power cycle
+     * (2026-09-03; HWiNFO for DOS hard-hung on the same machine the
+     * same day). Whether that is EMM386 trapping an opcode it doesn't
+     * know how to emulate and reflecting it forever, or something
+     * specific to that OverDrive, doesn't matter here: a hardware
+     * inspection tool must not wedge the machine to save a "~". The PIT
+     * loop path below works under the same monitor on every CPU tried,
+     * and snap_to_plausible_mhz() still lands it on a real grade for a
+     * recognized model.
+     */
+    if (g_probe.has_tsc && !in_v86_mode()) {
         g_probe.speed_value = measure_mhz_via_tsc();
+        g_probe.speed_measured = (g_probe.speed_value > 0UL);
     } else {
         const char *model_name = g_probe.has_cpuid
             ? cpu_model_name(g_probe.vendor, g_probe.family, g_probe.model)
@@ -805,7 +840,7 @@ void get_cpu_speed(char *buf, size_t buflen)
 {
     ensure_probed();
 
-    if (g_probe.has_tsc && g_probe.speed_value > 0UL)
+    if (g_probe.speed_measured && g_probe.speed_value > 0UL)
         sprintf(buf, "%lu MHz", g_probe.speed_value);
     else if (g_probe.speed_value > 0UL)
         sprintf(buf, "~%lu MHz", g_probe.speed_value);

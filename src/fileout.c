@@ -18,3 +18,15 @@ int write_fields_file(const field_t *fields, int count, const char *path)
     fclose(fp);
     return 0;
 }
+
+int truncate_fields_file(const char *path)
+{
+    FILE *fp;
+
+    fp = fopen(path, "w");
+    if (fp == NULL)
+        return -1;
+
+    fclose(fp);
+    return 0;
+}

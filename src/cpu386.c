@@ -66,6 +66,20 @@ int has_cpuid(void)
     return (after != orig) ? 1 : 0; /* ID bit (21) stuck: pre-CPUID 486 */
 }
 
+int in_v86_mode(void)
+{
+    unsigned msw;
+
+    _asm {
+        smsw ax
+        mov msw, ax
+    }
+
+    return (msw & 0x0001) ? 1 : 0; /* CR0.PE set while a "real-mode" DOS
+                                     * program runs: there's a V86 monitor
+                                     * underneath us */
+}
+
 void cpuid_call(unsigned long leaf, unsigned long *a, unsigned long *b,
                  unsigned long *c, unsigned long *d)
 {

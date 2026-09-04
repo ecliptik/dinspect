@@ -136,6 +136,27 @@ int main(int argc, char *argv[])
         }
     }
 
+    /* Truncate the report file BEFORE any probing starts. Every probe
+     * below runs first and the report is only written at the very end,
+     * so a run that hangs or gets rebooted out from under it mid-probe
+     * would otherwise leave whatever report was already at that path
+     * completely untouched -- and a harness that fetches the file by
+     * name afterwards cannot tell a stale, complete-looking report from
+     * a fresh one. That exact thing happened on the vcctrl rig on
+     * 2026-09-03: dinspect never finished on a freshly fitted Pentium
+     * OverDrive (the then-unbounded TSC calibration loop is the prime
+     * suspect), the harness rebooted the machine on its fixed timer and
+     * fetched a SYSINFO.TXT written 30 minutes earlier by the previous
+     * CPU, an Am5x86 -- which then looked like a CPUID misidentification.
+     * An empty file is an unambiguous "this run did not finish" instead.
+     * Failing here also surfaces an unwritable path immediately rather
+     * than after all the probing is done.
+     */
+    if (out_path != NULL && truncate_fields_file(out_path) != 0) {
+        fprintf(stderr, "dinspect: could not write '%s'\n", out_path);
+        return 1;
+    }
+
     ADD_FIELD("OS", get_dos_version(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("Shell", get_shell(fields[count].value, sizeof(fields[count].value)));
     ADD_FIELD("CPU", get_cpu_info(fields[count].value, sizeof(fields[count].value)));

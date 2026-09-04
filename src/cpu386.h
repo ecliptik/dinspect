@@ -35,9 +35,20 @@ int has_cpuid(void);
 void cpuid_call(unsigned long leaf, unsigned long *a, unsigned long *b,
                  unsigned long *c, unsigned long *d);
 
+/* Whether this real-mode program is actually running as a virtual-8086
+ * task under a protected-mode monitor (EMM386, QEMM, a Windows DOS box,
+ * ...) rather than in true real mode. Reads CR0's PE bit via SMSW, which
+ * is unprivileged and never traps. Only call once is_386_or_later() has
+ * confirmed 386+ (V86 mode doesn't exist before that anyway).
+ */
+int in_v86_mode(void);
+
 /* RDTSC-based clock speed estimate in MHz, across a 4-BIOS-tick window.
  * Only call once CPUID leaf 1's EDX bit 4 (TSC) has confirmed the
- * time-stamp counter is present.
+ * time-stamp counter is present AND in_v86_mode() has confirmed we are
+ * in true real mode. RDTSC under a V86 monitor is not safe on every
+ * machine: on the vcctrl rig's Pentium OverDrive 83 under MS-DOS 6.22
+ * EMM386 NOEMS it never returns at all (see ensure_probed() in cpu.c).
  */
 unsigned long measure_mhz_via_tsc(void);
 
